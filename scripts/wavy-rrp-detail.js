@@ -1031,10 +1031,17 @@
         log('prekresleni:', reason);
         // Kod varianty muze ukazovat na produkt, ktery jsme jeste
         // nenacetli (napr. jina sada variant) - pak dotahnem znovu.
+        // U PRICES_URL chceme po zmene varianty znovu dotahnout ceny.json
+        // kdyz aktualni produkt neobsahuje viditelny kod.
         var visible = currentCode();
-        if (visible && product && !matchByCode(product, visible)
-            && product.variants.length
-            && !product.variants.some(function (v) { return !v.code; })) {
+        var needReload = false;
+        if (visible) {
+          if (!product || !matchByCode(product, visible)) {
+            needReload = true;
+          }
+        }
+
+        if (needReload) {
           ensureProduct().then(update);
         } else {
           update();
