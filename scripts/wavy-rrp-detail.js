@@ -2,7 +2,7 @@
    Wavy Boats - doporucena cena na DETAILU PRODUKTU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 4.1
+   Verze: 4.2
    Zaklad: v4.0, opraveno cteni kodu z prepinace variant
            (v4.0 slepila kody vsech variant do jednoho retezce)
    Predchozi: v3.0 (overeno naostro na www.dealerwb.cz,
@@ -183,8 +183,8 @@
 
   /* ================= CTENI ZE STRANKY ================= */
 
-  // Kod produktu: bez mezer, alespon 3 znaky, obsahuje cislici.
-  var CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._\/\-]{2,}$/;
+  // Kod produktu: bez mezer, alespon 2 znaky, obsahuje cislici.
+  var CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._\/\-]{1,}$/;
   var NOT_A_CODE = [
     'zvolte', 'variantu', 'varianta', 'vyberte', 'kod', 'code',
     'skladem', 'nedostupne', 'dostupnost', 'ks', 'cena'
@@ -245,6 +245,18 @@
       if (!opt || !opt.value) continue;        // "Zvolte variantu" nema value
       var fromOpt = extractCodes(opt.getAttribute('data-code') || opt.textContent);
       if (fromOpt.length === 1) return fromOpt[0];
+      // Vic "kodu podobnych" tokenu (napr. "1001E031A E7.5 LH Avator"
+      // da i token E7.5). Rozhodne az srovnani se kody z feedu -
+      // a to nejdelsim, kvuli prefixum typu 1001E031A / ...APAK.
+      if (fromOpt.length > 1 && product && product.variants.length) {
+        var known = fromOpt.filter(function (c) {
+          return product.variants.some(function (v) { return norm(v.code) === norm(c); });
+        });
+        if (known.length) {
+          known.sort(function (a, b) { return b.length - a.length; });
+          return known[0];
+        }
+      }
     }
 
     var els = document.querySelectorAll(CONFIG.VARIANTS.optionSelectors);
@@ -572,6 +584,86 @@
     return null;
   }
 
+  // Texty, ktere popisuji ZVOLENOU variantu (option, dlazdice, kod).
+  function selectionTexts() {
+    var out = [];
+
+    variantSelects().forEach(function (s) {
+      var opt = s.options[s.selectedIndex];
+      if (opt && opt.value) out.push(opt.textContent);
+    });
+
+    var els = document.querySelectorAll(CONFIG.VARIANTS.optionSelectors);
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.tagName === 'OPTION' && !el.value) continue;
+      out.push(el.getAttribute('data-code'));
+      out.push(el.getAttribute('title'));
+      out.push(el.textContent);
+    }
+
+    var visible = getVisibleCode();
+    if (visible) out.push(visible);
+
+    return out.filter(Boolean).map(norm);
+  }
+
+  // Parovani podle textu zvolene varianty.
+  // Klicove: kody i nazvy variant se u Wavy Boats PREKRYVAJI
+  //   1001E031A     je podretezec  1001E031APAK
+  //   E7.5 LH Avator je podretezec E7.5 LH Avator s paketem
+  // Proto se nebere prvni shoda, ale NEJDELSI - kratsi varianta by
+  // jinak vzdy prebila tu s prilepkem a dealer by videl cizi cenu.
+  function matchBySelection(data) {
+    var texts = selectionTexts();
+    if (!texts.length) return null;
+
+    function inTexts(needle) {
+      if (!needle) return false;
+      for (var i = 0; i < texts.length; i++) {
+        if (texts[i].indexOf(needle) !== -1) return true;
+      }
+      return false;
+    }
+
+    var scored = [];
+    data.variants.forEach(function (v) {
+      var score = 0;
+      var how = [];
+
+      var code = norm(v.code);
+      if (code && inTexts(code)) {
+        // kod vazi vic nez nazev - je jednoznacnejsi
+        score += code.length * 10;
+        how.push('kód');
+      }
+
+      if (v.params.length) {
+        var all = true;
+        var len = 0;
+        v.params.forEach(function (p) {
+          if (inTexts(p.normValue)) len += p.normValue.length;
+          else all = false;
+        });
+        if (all) { score += len; how.push('parametry'); }
+      }
+
+      if (score > 0) scored.push({ record: v, score: score, how: how.join(' + ') });
+    });
+
+    if (!scored.length) return null;
+
+    scored.sort(function (a, b) { return b.score - a.score; });
+
+    // Remiza = nejde rozhodnout, radsi nic nez cizi cena.
+    if (scored.length > 1 && scored[0].score === scored[1].score) {
+      log('shoda na vic variant se stejnym skore - nevypisuji');
+      return null;
+    }
+
+    return { record: scored[0].record, how: scored[0].how + ' zvolené varianty' };
+  }
+
   function uniformVariant(data) {
     if (!data.variants.length) return null;
     var first = null;
@@ -591,7 +683,9 @@
       return { record: data.base, how: 'produkt bez variant' };
     }
 
-    var hit = matchByCode(data, currentCode()) || matchByParams(data);
+    var hit = matchByCode(data, currentCode())
+      || matchBySelection(data)
+      || matchByParams(data);
     if (hit) return hit;
 
     if (CONFIG.VARIANTS.SHOW_BASE_WHEN_UNIFORM) {
@@ -794,6 +888,7 @@
         vsechnyKodyNaStrance: getAllPageCodes(),
         kandidatiKodu: cands,
         zvoleneHodnoty: getSelectedValues(),
+        textyZvoleneVarianty: selectionTexts(),
         feedUrl: cands[0] ? feedUrl(cands[0]) : null,
         pokusyOFeed: lastDiag.attempts,
         produkt: product && {
