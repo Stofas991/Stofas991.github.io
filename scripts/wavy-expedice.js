@@ -2,9 +2,26 @@
    Wavy Boats - volba delene expedice (krok 2)
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 5.0
-   Zaklad: v4.0 (vykresleni overeno naostro na
-           www.dealerwb.cz/objednavka/krok-2/)
+   Verze: 5.2
+   Zaklad: v5.0 (vykresleni i detekce dostupnosti overeny naostro
+           18. 8. 2026 na www.dealerwb.cz/objednavka/krok-2/)
+
+   ZMENY PROTI VERZI 5.0
+   1) Hlaska pri nerozhodnute dostupnosti. v5.0 volala showError(),
+      ale ta byla podminena existenci bloku volby - a ten se v rezimu
+      PENDING jeste nevykresluje. Prvni klik na "Objednat" se tedy
+      spolkl BEZ JAKEKOLI HLASKY a zakaznik do 6,5 s nevidel nic.
+      Ted se hlaska vlozi nad tlacitko i bez bloku.
+   2) CASTECNA DOSTUPNOST JEDNE POLOZKY. Kdyz dealer objedna 3 ks
+      jednoho produktu a skladem je 1 ks, cely radek je "Skladem",
+      takze v5.0 vyhodnotila "vse skladem" a volbu vubec nenabidla.
+      Rozhodnout se ale musi stejne. Ted se z textu dostupnosti
+      tahne pocet kusu ("Skladem (1 ks)" -> 1) a porovnava se s
+      objednanym mnozstvim. Staci jedna takova polozka a volba se
+      nabidne, i kdyz je v kosiku sama.
+      Kdyz je radek skladem, objednava se vic kusu a pocet skladem
+      z textu vycist nejde, nabidne se volba take (viz
+      CHOICE_WHEN_COUNT_UNKNOWN).
 
    Co to dela:
    1) Nad tlacitko "Objednat s povinnosti platby" prida povinnou
@@ -34,13 +51,23 @@
    ukotveni:  div.next-step    (pravy sloupec col-md-4, ~413 px)
    formular:  form#order-form  (action .../Step2Validate/)
 
-   NEOVERENE (nutne projit pred nasazenim!)
-   Selektory a texty dostupnosti v CONFIG.AVAIL. Na dealerwb.cz
-   mely 17. 8. vsechny polozky stav "Momentalne nedostupne", coz
-   znamena, ze detekce vyhodnoti "nic neni skladem" a blok se
-   NEVYKRESLI NIKDY. Pred nasazenim spustit v konzoli na /kosik/:
-       WB_EXPEDICE.inspect()
-   a zkontrolovat, jake stavy dostupnosti se skutecne vraceji.
+   DOSTUPNOST - OVERENO 18. 8. 2026
+   inspect() na kosiku s 5 polozkami vratil 1 skladem / 4 neskladem
+   / 0 neznamych, selektor radku "table.cart-table tbody tr".
+   Blok se vykreslil, dlazdice i info reaguji.
+   Skutecne texty v kosiku:
+       "Dostupnost Skladem (1 ks)"        -> in
+       "Dostupnost Momentalne nedostupne" -> out
+   POZOR: skladem je v celem e-shopu jediny produkt -
+   BEZEL KIT (8M0215696), "Skladem (1 ks)". Bez nej v kosiku
+   nastane "nic neni skladem" a blok se zamerne nevykresli.
+   Na to pozor pri kazdem dalsim testovani.
+
+   POZNAMKA K POZNAMCE OBJEDNAVKY
+   textarea#remark je pri sbalene sekci visibility:hidden a ma
+   vysku 0, ale NENI disabled a ma name="remark". Nedisablovane
+   pole formular odesila i kdyz neni videt, takze skryte zalozni
+   pole nejspis nebude potreba. Overit ale skutecnym odeslanim.
 
    Vlozeni: Vzhled a obsah -> Editor -> HTML kody -> paticka
    ============================================================ */
@@ -59,7 +86,7 @@
       {
         id: 'ihned',
         label: 'Odeslat ihned, co je skladem',
-        info: 'Co máme skladem, odešleme hned. Zbytek doobjednáme a pošleme samostatně po naskladnění. Zásilky tedy budou dvě.',
+        info: 'Co máme skladem, odešleme hned – i když je to jen část kusů z položky. Zbytek doobjednáme a pošleme samostatně po naskladnění. Zásilky tedy budou dvě.',
         noteText: 'ZPŮSOB EXPEDICE: Skladové produkty odeslat ihned, neskladové následně po naskladnění.'
       },
       {
@@ -121,6 +148,22 @@
         'k odeslani ihned',
         'na prodejne'
       ],
+
+      /* ---------- castecna dostupnost jedne polozky ---------- */
+      // Dealer si da 3 ks jednoho produktu a skladem je 1 ks. Cely
+      // radek je "Skladem", ale rozhodnout se stejne musi: poslat
+      // ten jeden kus hned, nebo cekat na vsechny tri.
+      // Proto se z textu dostupnosti tahne pocet kusu a porovnava
+      // se s objednanym mnozstvim.
+      PARTIAL_ENABLED: true,
+
+      // "Skladem (1 ks)" -> 1. Zabira i "(1 ks)" samostatne.
+      stockCountPattern: '\\((?:\\s*(?:>|<|max\\.?)?\\s*)(\\d+)\\s*ks',
+
+      // Radek je skladem, ale pocet kusu z textu vycist nejde
+      // (napr. jen "Skladem") a objednava se vic nez 1 ks. Nevime,
+      // jestli je to cele skladem. true = radsi nabidnout volbu.
+      CHOICE_WHEN_COUNT_UNKNOWN: true,
 
       // Kdyz je vse skladem / nic skladem, blok se nevykresli.
       // Tady se da zapnout, aby se do poznamky presto zapsala
@@ -219,9 +262,46 @@
     return 'unknown';
   }
 
+  // Objednane mnozstvi z radku kosiku. Cte se i z atributu, protoze
+  // radek muze prijit z dokumentu naparsovaneho DOMParserem.
+  function rowQuantity(row) {
+    var input = row.querySelector('input[name="amount"], input[data-testid="cartAmount"]');
+    if (!input) return 1;
+    var raw = input.value || input.getAttribute('value');
+    var n = parseFloat(raw);
+    return (isNaN(n) || n <= 0) ? 1 : n;
+  }
+
+  // Pocet kusu skladem z textu dostupnosti: "skladem (1 ks)" -> 1.
+  // Vraci null, kdyz v textu zadny pocet neni.
+  function stockCount(text) {
+    if (!text) return null;
+    var re = new RegExp(CONFIG.AVAIL.stockCountPattern, 'i');
+    var m = String(text).match(re);
+    if (!m) return null;
+    var n = parseInt(m[1], 10);
+    return isNaN(n) ? null : n;
+  }
+
+  // Je radek skladem jen castecne? Tzn. objednava se vic kusu,
+  // nez je skladem. Vraci true / false / null (nevime).
+  function isPartial(state, text, qty) {
+    if (!CONFIG.AVAIL.PARTIAL_ENABLED) return false;
+    if (state !== 'in') return false;
+    if (qty <= 1) return false;
+
+    var stock = stockCount(text);
+    if (stock == null) return CONFIG.AVAIL.CHOICE_WHEN_COUNT_UNKNOWN ? null : false;
+    return qty > stock;
+  }
+
   function readCartDoc(doc) {
     var picked = pickRows(doc);
-    var report = { selector: picked.selector, items: [], in: 0, out: 0, unknown: 0 };
+    var report = {
+      selector: picked.selector, items: [],
+      in: 0, out: 0, unknown: 0,
+      partial: 0, partialUnknown: 0
+    };
 
     picked.rows.forEach(function (row) {
       if (CONFIG.AVAIL.excludeSelectors && row.matches
@@ -232,11 +312,20 @@
       var nameEl = row.querySelector('.p-name, .main-link, a');
       var text = rowAvailabilityText(row);
       var state = classify(text);
+      var qty = rowQuantity(row);
+      var stock = stockCount(text);
+      var partial = isPartial(state, text, qty);
+
+      if (partial === true) report.partial++;
+      else if (partial === null) report.partialUnknown++;
 
       report.items.push({
         nazev: nameEl ? norm(nameEl.textContent).slice(0, 60) : '(?)',
         dostupnost: text || '(nic nenalezeno)',
-        stav: state
+        stav: state,
+        ks: qty,
+        skladem: stock,
+        castecne: partial
       });
       report[state]++;
     });
@@ -267,6 +356,17 @@
   function decide(report) {
     if (!report || !report.items.length) return { mode: MODE.CHOICE, reason: 'zadne polozky' };
     if (report.unknown > 0) return { mode: MODE.CHOICE, reason: 'neznamy stav dostupnosti' };
+
+    // Jedna polozka, ktera je skladem jen castecne (3 ks objednane,
+    // 1 ks skladem), staci sama - i kdyz je v kosiku jako jedina.
+    // Cely radek je "Skladem", ale rozhodnout se musi stejne.
+    if (report.partial > 0) {
+      return { mode: MODE.CHOICE, reason: 'polozka skladem jen castecne' };
+    }
+    if (report.partialUnknown > 0) {
+      return { mode: MODE.CHOICE, reason: 'vic kusu, pocet skladem neznamy' };
+    }
+
     if (report.in > 0 && report.out > 0) return { mode: MODE.CHOICE, reason: 'mix skladem/neskladem' };
     if (report.out === 0) return { mode: MODE.SKIP, skip: 'allIn', reason: 'vse skladem' };
     return { mode: MODE.SKIP, skip: 'allOut', reason: 'nic neni skladem' };
@@ -300,20 +400,55 @@
     chosenId = id;
     paintTiles();
     hideError();
+    hideStandaloneNotice();
     log('vybrano', id);
+  }
+
+  // Hlaska mimo blok volby. Potrebujeme ji pro rezim PENDING, kdy
+  // blok jeste NENI na strance (mount() bezi az v rezimu CHOICE).
+  // v5.0 tady mela showError() podminenou existenci bloku, takze se
+  // prvni klik na Objednat spolkl uplne bez hlasky a zakaznik cekal
+  // az 6,5 s, aniz by se cokoli stalo.
+  function showStandaloneNotice(message) {
+    var btn = document.querySelector(CONFIG.SELECTORS.submit);
+    if (!btn) return;
+
+    var note = document.querySelector('.' + CLS + '-notice');
+    if (!note) {
+      note = document.createElement('div');
+      note.className = CLS + '-notice';
+      note.setAttribute('role', 'status');
+      note.style.cssText = 'margin:0 0 10px;padding:8px 10px;background:#f5f5f5;'
+        + 'border-left:3px solid #c00;font-size:12px;line-height:1.4;color:#333;';
+      var anchor = btn.closest(CONFIG.SELECTORS.anchor) || btn.parentNode;
+      anchor.parentNode.insertBefore(note, anchor);
+    }
+    note.textContent = message;
+    note.style.display = 'block';
+  }
+
+  function hideStandaloneNotice() {
+    var note = document.querySelector('.' + CLS + '-notice');
+    if (note && note.parentNode) note.parentNode.removeChild(note);
   }
 
   function showError(message) {
     var err = document.querySelector('.' + CLS + '-err');
     var box = document.querySelector('.' + CLS);
+
+    // Blok na strance neni (typicky rezim PENDING) - hlaska musi jit
+    // i tak, jinak klik na Objednat vypada jako by se nic nestalo.
+    if (!box) {
+      showStandaloneNotice(message || CONFIG.ERROR);
+      return;
+    }
+
     if (err) {
       err.textContent = message || CONFIG.ERROR;
       err.style.display = 'block';
     }
-    if (box) {
-      box.style.borderColor = '#c00';
-      box.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    box.style.borderColor = '#c00';
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function hideError() {
@@ -467,7 +602,7 @@
       e.preventDefault();
       e.stopPropagation();
       if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-      if (document.querySelector('.' + CLS)) showError(CONFIG.PENDING_ERROR);
+      showError(CONFIG.PENDING_ERROR);
       log('odeslani zdrzeno - ceka se na dostupnost');
       return;
     }
@@ -538,6 +673,10 @@
     mode = next;
     skipReason = skip || null;
     log('rezim:', mode, skipReason || '', '(' + (reason || '') + ')');
+
+    // Dostupnost je rozhodnuta, hlaska "Zjistujeme dostupnost" uz
+    // neplati - jinak by na strance zustala visnout.
+    if (mode !== MODE.PENDING) hideStandaloneNotice();
 
     if (mode === MODE.CHOICE) mount();
     else unmount();
@@ -626,9 +765,14 @@
    POZNAMKY
 
    1) Kdy se volba zobrazi
-      mix skladem + neskladem  -> ZOBRAZI (jedina situace, kdy je
-                                  co rozhodovat)
-      vse skladem              -> skryje, odeslani projde
+      mix skladem + neskladem  -> ZOBRAZI
+      polozka skladem jen
+      castecne (3 ks obj.,
+      1 ks skladem)            -> ZOBRAZI, i kdyz je v kosiku sama
+      vic kusu, pocet skladem
+      z textu neznamy          -> ZOBRAZI (bezpecna zaloha)
+      vse skladem v plnem
+      objednanem mnozstvi      -> skryje, odeslani projde
       nic neni skladem         -> skryje, odeslani projde
       neznamy/nejasny stav     -> ZOBRAZI (bezpecna zaloha)
 
@@ -655,19 +799,17 @@
       Bez toho by kliknuti na ni odeslalo formular objednavky.
 
    CO ZBYVA OVERIT
-   a) NEJDRIV: texty dostupnosti v kosiku.
-      Na /kosik/ v konzoli spustit WB_EXPEDICE.inspect().
-      Kdyz vsechny polozky vyjdou jako "out" (17. 8. to tak bylo -
-      32 z 32 "Momentalne nedostupne"), blok se nikdy nezobrazi
-      a fice je de facto vypnuta. Pak je potreba s klientem
-      vyjasnit, jestli se u zbozi skladovost vubec nastavuje.
-      Kdyz vyjde hodne "unknown", doplnit texty do CONFIG.AVAIL.IN
-      / .OUT nebo upravit textSelectors.
-   b) selektory radku kosiku (report.selector v inspect())
-   c) zbytek z v4.0, tzn. na male testovaci objednavce:
+   a) castecna dostupnost naostro. Na /kosik/ dej u BEZEL KITu
+      (8M0215696, skladem 1 ks) mnozstvi 3 a spust
+      WB_EXPEDICE.inspect(). V items ma byt castecne:true a
+      rozhodnuti "polozka skladem jen castecne".
+      Zaroven zkontroluj, ze regulark stockCountPattern trefi text
+      dostupnosti i u jinych produktu (napr. "Skladem (>5 ks)").
+   b) na male testovaci objednavce:
       - ze tlacitko bez vybrane volby objednavku NEODESLE
       - ze se text v poznamce objevi AZ ZA textem zakaznika
       - ze Shoptet odesle obsah poznamky i kdyz byla sekce sbalena
-        a prepinac zapnul az script  <- nejrizikovejsi bod
-        Zaloha: zapisovat do skryteho pole formulare.
+        a prepinac zapnul az script.
+        textarea#remark neni disabled (jen visibility:hidden), takze
+        by to projit melo, ale potvrdit to jde jen odeslanim.
    ============================================================ */
