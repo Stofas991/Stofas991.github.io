@@ -2,11 +2,30 @@
    Wavy Boats - doporucena cena na DETAILU PRODUKTU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 4.2
-   Zaklad: v4.0, opraveno cteni kodu z prepinace variant
-           (v4.0 slepila kody vsech variant do jednoho retezce)
-   Predchozi: v3.0 (overeno naostro na www.dealerwb.cz,
-           produkty BEZ variant)
+   Verze: 4.3
+   Zaklad: v4.2 (varianty overeny naostro 18. 8. 2026)
+
+   ZMENY PROTI VERZI 4.2
+   1) Doporucena cena NENI preskrtnuta (STRIKETHROUGH: false).
+      Dohoda s klientem mluvi o preskrtnute cene, takze je to
+      vedoma odchylka - pri predani ji zminte. Prepnuti zpet je
+      jedna hodnota v CONFIG.
+   2) Rozhodnuti "zobrazit / nezobrazit" se dela proti CENE NA
+      STRANCE, ne proti dealerskemu ceniku z feedu.
+      Proc: feed se stahuje s credentials:'omit' a hash v URL, takze
+      vraci dealersky cenik VZDY - bez ohledu na to, kdo se na
+      stranku kouka. v4.2 proto vypisovala doporucenou cenu i
+      NEPRIHLASENEMU navstevnikovi, a to jako druhou, uplne shodnou
+      radku (overeno 18. 8. na /weathercap-female/: 63 Kc a pod tim
+      "Doporucena cena: 63 Kc"). Cena na strance je jedina cena, o
+      ktere vime, ze patri aktualni session.
+      Dusledek: nepihlaseny nevidi nic (jeho cena = doporucena),
+      dealer se shodnou cenou taky nic (viz dohoda), dealer s nizsi
+      cenou vidi preskrtnutou doporucenou.
+   3) Fallback "vratil se jediny SHOPITEM, beru ho" ma pojistku.
+      Filtr &code= v exportu je PODSTRINGOVY, ne presny (overeno:
+      &code=8M02104 vrati 72 produktu, &code=1001E031 vrati 1).
+      Bez pojistky umel fallback prilepit cenu ciziho produktu.
 
    ZMENY PROTI VERZI 3.0
    1) Podpora variant. Feed se naparsuje CELY jednou (SHOPITEM
@@ -26,11 +45,20 @@
    5) WB_RRP.debug() vypise, co script na strance vidi a co nasel
       ve feedu. Bez toho se parovani variant nedoladi.
 
-   NEOVERENO - nutne projit na variantnim produktu:
-   - jestli productsComplete vraci u variant tag CODE a PARAMETERS
-   - jestli filtr &code= v exportu bere i kod varianty
-   - jake selektory ma varianta v teto sablone (select vs. dlazdice)
-   Spustit na detailu variantniho produktu:  WB_RRP.debug()
+   OVERENO NA VARIANTACH (18. 8. 2026, dealerwb.cz)
+   - VARIANT ma vlastni CODE, PRICE_VAT, PRICELISTS i PARAMETERS
+   - filtr &code= bere i kod varianty (vrati rodicovsky SHOPITEM)
+   - varianty jsou v <select id="simple-variants-select">
+   - POZOR: text option NEOBSAHUJE kod varianty, jen parametr, napr.
+     "Typ: E7.5 LH Avator - Na objednavku  (53 728 Kc)".
+     Parovani proto NIKDY nejde pres kod, vzdy pres hodnotu
+     parametru (matchBySelection). Kdyz dve varianty budou mit
+     shodnou hodnotu parametru, nevypise se nic - to je zamer.
+   - u variantniho produktu nema rodicovsky SHOPITEM ani CODE, ani
+     PRICE_VAT jako primeho potomka (jsou jen na VARIANT). Proto se
+     base.code / base.mainWithVat u variant beznne rovnaji null.
+
+   Ladeni na detailu:  WB_RRP.debug()
 
    Vlozeni: Vzhled a obsah -> Editor -> HTML kody -> paticka
    ============================================================ */
@@ -49,14 +77,44 @@
     SHOW_WITH_VAT: true,
     LABEL: 'Doporučená cena:',
 
-    // true  = vypsat i kdyz je doporucena cena shodna s cenou dealera
-    // false = pri shodne cene nic nevypisovat
-    SHOW_WHEN_EQUAL: true,
+    // Preskrtnuti hodnoty.
+    // POZOR: dohoda s klientem (mail) mluvi o PRESKRTNUTE cene.
+    // Vypnuto na vyslovne prani - pri predani to zminte, aby to
+    // nevypadalo jako nedodelek.
+    STRIKETHROUGH: false,
 
-    // Vypsat jen prihlasenemu dealerovi (tj. tomu, kdo ma vlastni cenik).
-    // Ucet bez ceniku vidi bezne koncove ceny, takze by se cena
-    // zopakovala dvakrat pod sebou.
-    REQUIRE_DEALER_PRICELIST: true,
+    /* ---------- kdy cenu NEZOBRAZIT ---------- */
+    // Porovnava se s cenou, kterou ma navstevnik na strance.
+    // Diky tomu se cena schova jak dealerovi se shodnou cenou, tak
+    // nepihlasenemu navstevnikovi (ten ma na strance rovnou tu
+    // doporucenou, takze by videl tu samou cenu dvakrat).
+    PAGE_PRICE: {
+      // Odkud cist cenu s DPH. Poradi = priorita.
+      // Overeno: .p-final-price-wrapper .price-final-holder = "101 Kč"
+      selectors: [
+        '.p-final-price-wrapper .price-final-holder',
+        '.p-final-price-wrapper .price-final',
+        '.price-final-holder',
+        '.p-final-price'
+      ],
+      // Zaloha - Shoptet plni i mikrodata s cistym cislem.
+      metaSelector: 'meta[itemprop="price"], [data-micro="price"]',
+
+      // Cenu na strance nejde precist (jina sablona, "od 1 000 Kč"
+      // u nevybrane varianty). true = radsi nic nevypisovat, aby se
+      // nestalo, ze doporucenou cenu uvidi koncovy zakaznik.
+      HIDE_WHEN_UNKNOWN: true
+    },
+
+    // Vypsat i kdyz je doporucena cena shodna s cenou na strance.
+    // Zamerne false - tak je to popsane v dohode s klientem.
+    // Pri prepnuti na true si to s klientem nejdriv odsouhlas.
+    SHOW_WHEN_EQUAL: false,
+
+    // Puvodni pojistka z v4.2 - vypsat jen kdyz feed vraci dealersky
+    // cenik. Uz neni potreba (rozhoduje cena na strance) a u variant
+    // je matouci, protoze rodicovsky SHOPITEM cenik nema.
+    REQUIRE_DEALER_PRICELIST: false,
 
     // null = prvni cenik ve feedu. Jinak presny nazev z tagu TITLE,
     // napr. 'VO - Prodej' (nutne, pokud dealer muze mit ceniku vic).
@@ -179,6 +237,64 @@
     var out = [];
     list.forEach(function (v) { if (v != null && out.indexOf(v) === -1) out.push(v); });
     return out;
+  }
+
+  /* ================= CENA NA STRANCE ================= */
+
+  // Z textu vytahne cislo pred "Kc". Nezlomitelne mezery i mezery
+  // mezi tisici se odstranuji, desetinna carka se prevadi na tecku.
+  // "od 53 728 Kč" vrati null zamerne - je to rozsah, ne cena
+  // konkretni varianty, takze se s nim neda porovnavat.
+  function priceFromText(text) {
+    if (!text) return null;
+    var t = String(text).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    if (/(^|\s)od\s/i.test(t)) return null;
+    var m = t.match(/(-?\d[\d ]*(?:[.,]\d+)?)\s*(?:Kč|Kc|CZK)/i);
+    if (!m) return null;
+    var n = parseFloat(m[1].replace(/ /g, '').replace(',', '.'));
+    return isNaN(n) ? null : n;
+  }
+
+  function isVisible(el) {
+    if (!el) return false;
+    if (el.offsetParent !== null) return true;
+    return !!(el.getClientRects && el.getClientRects().length);
+  }
+
+  // Cena s DPH, kterou ma na strance aktualni navstevnik.
+  //
+  // POZOR - zjisteno testem 18. 8. 2026:
+  // U variantniho produktu drzi Shoptet v DOM cenu KAZDE varianty
+  // plus rozsah "od X Kč" - na Avatoru 7.5e to byly 4 elementy
+  // .price-final-holder a jen JEDEN z nich byl viditelny.
+  // querySelector() bral ten prvni, tzn. skrytou cenu jine
+  // varianty (42 982 Kč misto 62 722 Kč u varianty s paketem).
+  // Proto se bere prvni VIDITELNY element. Kdyz zadny viditelny
+  // neni, vraci se null - porovnavat cenu proti skryte cene jine
+  // varianty je horsi nez cenu nevypsat.
+  function pagePriceWithVat() {
+    var sels = CONFIG.PAGE_PRICE.selectors;
+
+    for (var i = 0; i < sels.length; i++) {
+      var els = document.querySelectorAll(sels[i]);
+      for (var j = 0; j < els.length; j++) {
+        if (!isVisible(els[j])) continue;
+        var value = priceFromText(els[j].textContent);
+        if (value != null) return value;
+      }
+    }
+
+    // Mikrodata jsou zaloha jen tehdy, kdyz je na strance jedina -
+    // u variant je jich taky vic a nedaji se rozlisit viditelnosti.
+    var metas = document.querySelectorAll(CONFIG.PAGE_PRICE.metaSelector);
+    if (metas.length === 1) {
+      var raw = metas[0].getAttribute('content') || metas[0].textContent;
+      var n = parseFloat(String(raw).replace(/\s/g, '').replace(',', '.'));
+      if (!isNaN(n)) return n;
+    }
+
+    log('cenu na strance nelze jednoznacne precist');
+    return null;
   }
 
   /* ================= CTENI ZE STRANKY ================= */
@@ -470,11 +586,28 @@
       }
     }
 
-    // Filtr &code= vratil jeden produkt, ale kod nesedi znak na znak
-    // (varianty muzou mit prefix/suffix). Bereme ho.
+    // Filtr &code= vratil jeden produkt, ale kod nesedi znak na znak.
+    // POZOR: filtr je PODSTRINGOVY (&code=8M02104 vrati 72 produktu),
+    // takze "jediny vraceny produkt" NENI dukaz spravnosti - klidne
+    // to muze byt cizi produkt, jehoz kod nas kod jen obsahuje.
+    // Bereme ho jen tehdy, kdyz nektery kod ze stranky s nekterym
+    // kodem z feedu opravdu souvisi (jeden je prefixem druheho).
     if (items.length === 1 && fallback) {
-      log('kod nesedi presne, beru jediny vraceny SHOPITEM', fallback.base.code);
-      return fallback;
+      var feedCodes = [fallback.base.code].concat(
+        fallback.variants.map(function (v) { return v.code; })
+      ).filter(Boolean).map(norm);
+
+      var related = wanted.some(function (w) {
+        return feedCodes.some(function (f) {
+          return f.indexOf(w) === 0 || w.indexOf(f) === 0;
+        });
+      });
+
+      if (related) {
+        log('kod nesedi presne, ale souvisi - beru jediny SHOPITEM', fallback.base.code);
+        return fallback;
+      }
+      log('jediny vraceny SHOPITEM ma nesouvisejici kod - zahazuji', feedCodes);
     }
 
     log('produkt', wantedCodes, 've feedu nenalezen (SHOPITEMu:', items.length + ')');
@@ -733,7 +866,8 @@
 
       var value = document.createElement('span');
       value.className = CSS_CLASS + '-value';
-      value.style.cssText = 'font-weight:600;color:#333;';
+      value.style.cssText = 'font-weight:600;color:#333;'
+        + (CONFIG.STRIKETHROUGH ? 'text-decoration:line-through;' : '');
 
       box.appendChild(label);
       box.appendChild(value);
@@ -774,9 +908,24 @@
       return;
     }
 
-    if (!CONFIG.SHOW_WHEN_EQUAL && dealerPrice != null
-        && Math.round(recommended) <= Math.round(dealerPrice)) {
-      log('shodna cena - nezobrazuji');
+    // Rozhoduje cena na strance, ne cenik z feedu - viz hlavicka.
+    var onPage = pagePriceWithVat();
+    lastDiag.pagePrice = onPage;
+
+    if (onPage == null) {
+      if (CONFIG.PAGE_PRICE.HIDE_WHEN_UNKNOWN) {
+        log('cenu na strance nelze precist - nezobrazuji');
+        removeBox();
+        return;
+      }
+      log('cenu na strance nelze precist - vypisuji bez kontroly');
+    } else if (!CONFIG.SHOW_WHEN_EQUAL
+               && Math.round(rec.mainWithVat) <= Math.round(onPage)) {
+      // Porovnava se vzdy s DPH - cena na strance je s DPH, bez ohledu
+      // na to, jak je nastaveno SHOW_WITH_VAT.
+      // Sem spada dealer se shodnou cenou i nepihlaseny navstevnik,
+      // ktery ma na strance rovnou tu doporucenou cenu.
+      log('cena na strance je stejna nebo vyssi (' + onPage + ') - nezobrazuji');
       removeBox();
       return;
     }
@@ -883,6 +1032,7 @@
     debug: function () {
       var cands = codeCandidates();
       var out = {
+        cenaNaStrance: pagePriceWithVat(),
         kodZvoleneVarianty: getSelectedVariantCode(),
         kodNaStrance: getVisibleCode(),
         vsechnyKodyNaStrance: getAllPageCodes(),
@@ -906,6 +1056,7 @@
           })
         },
         parovani: lastDiag.match,
+        sparovanyZaznam: lastDiag.record,
         vypsano: lastRendered
       };
       if (window.console) {
@@ -948,10 +1099,16 @@
       a script pak tise nic nevypise - proto pri ladeni DEBUG:true.
    2) Vlastni sablony exportu Shoptet nabizi jen jako XLSX/CSV,
       takze pro cteni v prohlizeci se nedaji pouzit.
-   3) URL exportu vcetne hashe je v tomto souboru citelna komukoli,
-      kdo si zobrazi zdroj stranky. Export obsahuje i PURCHASE_PRICE
-      a INTERNAL_NOTE. Pokud to klientovi vadi, resenim je maly
-      endpoint na vlastnim serveru, ktery hash drzi u sebe.
+   3) BEZPECNOST EXPORTU - OTEVRENA OTAZKA PRO KLIENTA
+      URL exportu vcetne hashe je citelna komukoli, kdo si zobrazi
+      zdroj stranky. Overeno 18. 8. 2026 z NEPRIHLASENE session:
+      export vraci HTTP 200 a obsahuje PURCHASE_PRICE, PURCHASE_VAT,
+      PURCHASE_PRICE_INCL_VAT, INTERNAL_NOTE, STOCK a PRICELISTS.
+      Bez filtru &code= je to 43 430 produktu / 255 MB, tzn. cely
+      katalog s nakupnimi cenami a vsemi cenovymi hladinami.
+      Nez se to nasadi, musi to klient vedet a odsouhlasit.
+      Reseni, pokud to vadi: maly endpoint na vlastnim serveru, ktery
+      hash drzi u sebe a vraci jen CODE + PRICE_VAT.
    4) Cache je v sessionStorage pod kodem produktu I kodem kazde
       varianty. Pri ladeni pouzij WB_RRP.reload(), samotny F5 vezme
       data z cache.
