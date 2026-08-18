@@ -710,10 +710,17 @@
     if (CONFIG.PRICES_URL) {
       return ensurePrices().then(function (data) {
         var prices = (data && data.prices) || {};
+        var groups = (data && data.variantGroups) || {};
         var found = [];
         for (var i = 0; i < codes.length; i++) {
           var c = codes[i];
           if (!c) continue;
+
+          if (groups.hasOwnProperty(c) && Array.isArray(groups[c])) {
+            found.push({ code: c, group: groups[c] });
+            continue;
+          }
+
           if (prices.hasOwnProperty(c) && prices[c] != null) {
             found.push({ code: c, mainWithVat: prices[c] });
           }
@@ -721,6 +728,51 @@
         if (!found.length) {
           log('ceny.json: zadny kod nenalezen pro', codes);
           return null;
+        }
+
+        // Pokud je k dispozici skupina variant, pouzij ji jako plnou strukturu
+        // variant. variantGroups obsahuje ruzne parametry a cele skupiny pro
+        // zvolene varianty, ktere bez tohoto kroku do skriptu nevedou.
+        var groupHit = null;
+        for (var g = 0; g < found.length; g++) {
+          if (found[g].group) {
+            groupHit = found[g].group;
+            break;
+          }
+        }
+
+        if (groupHit) {
+          var variants = groupHit.map(function (member) {
+            var params = [];
+            if (Array.isArray(member.params)) {
+              params = member.params.map(function (p) {
+                var value = (p == null) ? '' : String(p).trim();
+                return { name: null, value: value, normValue: norm(value) };
+              }).filter(function (p) { return p.value; });
+            }
+
+            return {
+              code: member.code,
+              vat: 0,
+              mainWithVat: member.price,
+              dealerWithVat: null,
+              dealerTitle: null,
+              params: params
+            };
+          });
+
+          var payload = {
+            base: {
+              code: found[0].code,
+              vat: 0,
+              mainWithVat: variants[0] ? variants[0].mainWithVat : null,
+              dealerWithVat: null,
+              dealerTitle: null
+            },
+            variants: variants
+          };
+          try { writeCache(payload); } catch (e) { /* ignore */ }
+          return payload;
         }
 
         // Build product object compatible se zbytkem skriptu
