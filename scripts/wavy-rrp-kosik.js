@@ -41,6 +41,17 @@
       getElementsByTagName('PRICELIST')[0], cimz u variantniho
       produktu mohla vzit cenik nahodne varianty.
 
+   6) SOUHRN JEN KDYZ SE NECO LISI. Radky se pri shodne cene
+      skryvaly, ale souhrn se vypisoval vzdy - takze nepihlaseny
+      navstevnik videl "Doporucene ceny celkem" rovnou cene kosiku
+      (on ma v kosiku rovnou verejne ceny). Stejne u dealera, ktery
+      ma v kosiku jen zbozi bez rabatu. Ted se souhrn i placeholder
+      vypisuji jen tehdy, kdyz se aspon u jedne polozky doporucena
+      cena od ceny v kosiku lisi (SUM_ONLY_WHEN_ROW_SHOWN).
+      Prekreslovani se proto uz neridi jen pritomnosti nasich prvku,
+      ale podpisem obsahu kosiku (kod + pocet kusu) - jinak by
+      observer u nepihlaseneho volal run() po kazde zmene v DOM.
+
    Kod produktu NENI v kosiku videt, ale je v DOM:
    <tr data-micro="cartItem" data-micro-sku="99981T3">
    U varianty je tam kod VARIANTY (overeno: 1001E031A).
@@ -71,6 +82,18 @@
     // Vypnuto na vyslovne prani - pri predani to zminte, aby to
     // nevypadalo jako nedodelek.
     STRIKETHROUGH: false,
+
+    // Vypsat souhrn jen tehdy, kdyz se aspon u jedne polozky
+    // doporucena cena od ceny v kosiku opravdu lisi.
+    //
+    // Bez teto pojistky se souhrn vypisoval VZDY, tzn. i
+    // nepihlasenemu navstevnikovi - ten ma v kosiku rovnou verejne
+    // ceny, takze videl "Doporucene ceny celkem" rovnou cene kosiku.
+    // Radky se mu skryly (viz SHOW_WHEN_EQUAL), souhrn ne.
+    // Stejne to plati pro dealera, ktery ma v kosiku jen zbozi bez
+    // rabatu - nema smysl mu ukazovat souhrn, kdyz zadna z cen se
+    // nelisi.
+    SUM_ONLY_WHEN_ROW_SHOWN: true,
 
     // Vypsat doporucenou cenu i u produktu, kde je shodna s cenou
     // v radku kosiku. Zamerne false - tak je to popsane v dohode.
@@ -360,7 +383,12 @@
   // Na dobu prepoctu se vypisuje placeholder. Bez nej dealerovi po
   // zmene mnozstvi radka se souhrnem na ~2 s zmizi a vypada to,
   // jako by fice byla rozbita.
+  //
+  // Placeholder se vsak nesmi objevit tomu, komu se souhrn vubec
+  // nema ukazovat (nepihlaseny, dealer bez rabatu) - proto jen
+  // tehdy, kdyz uz souhrn jednou vypsany byl.
   function renderPending() {
+    if (!lastReport || (CONFIG.SUM_ONLY_WHEN_ROW_SHOWN && !lastReport.shown)) return;
     var wrap = summaryBox();
     if (!wrap || document.querySelector('.' + SUM_CLASS)) return;
     var line = renderRowLine(CONFIG.SUM_LABEL, CONFIG.PENDING_LABEL, true);
@@ -372,6 +400,13 @@
   function renderSummary(report) {
     var wrap = summaryBox();
     if (!wrap) { log('souhrnny box nenalezen'); return; }
+
+    // Zadny radek se nelisi = souhrn nema komu co rict.
+    // Sem spada nepihlaseny navstevnik i dealer bez rabatu.
+    if (CONFIG.SUM_ONLY_WHEN_ROW_SHOWN && !report.shown) {
+      log('zadna cena se nelisi - souhrn se nevypisuje');
+      return;
+    }
 
     if (report.missing > 0 && CONFIG.INCOMPLETE_MODE === 'hide') {
       log('souhrn skryt -', report.missing, 'polozek bez ceny');
@@ -473,6 +508,8 @@
         sumDealer: 0,
         dealerKnown: true,
         missing: 0,
+        shown: 0,
+        signature: cartSignature(),
         items: []
       };
 
@@ -484,6 +521,7 @@
           return;
         }
         report.sumRecommended += r.recommended;
+        if (r.visible) report.shown++;
         if (r.dealer == null) report.dealerKnown = false;
         else report.sumDealer += r.dealer;
         report.items.push({
@@ -518,13 +556,36 @@
 
   /* ================= PREKRESLOVANI ================= */
 
+  // Podpis obsahu kosiku: kod + pocet kusu za kazdy radek.
+  // Podle nej se pozna skutecna zmena (pridani, odebrani, zmena
+  // mnozstvi) nezavisle na tom, jestli je na strance co videt.
+  function cartSignature() {
+    return getRows().map(function (row) {
+      return (row.getAttribute('data-micro-sku') || '?') + ':' + getQuantity(row);
+    }).join('|');
+  }
+
   function needsRedraw() {
     if (!getRows().length) return false;
-    // v1.0 hlidala jen chybejici radky. Shoptet ale umi prekreslit
-    // jen souhrn vpravo - pak radky zustanou, souhrn zmizi a
-    // observer se vratil, takze souhrn uz se nikdy neobjevil.
-    return !document.querySelector('.' + ROW_CLASS)
-        || !document.querySelector('.' + SUM_CLASS);
+
+    // Jeste jsme nebezeli (kosik se donacetl az po startu).
+    if (!lastReport) return true;
+
+    // Zmenil se obsah kosiku - prepocitat, i kdyz zadny nas prvek
+    // na strance neni. Nova polozka muze mit rabat, i kdyz zadna
+    // z predchozich ho nemela.
+    if (lastReport.signature !== cartSignature()) return true;
+
+    // Shoptet prekreslil DOM a smazal nase prvky. Hlida se jen to,
+    // co tam podle posledniho behu patri - jinak by observer u
+    // nepihlaseneho (kde se zamerne nekresli nic) volal run()
+    // po kazde zmene v DOM.
+    if (lastReport.shown > 0 && !document.querySelector('.' + ROW_CLASS)) return true;
+
+    var sumExpected = !CONFIG.SUM_ONLY_WHEN_ROW_SHOWN || lastReport.shown > 0;
+    if (sumExpected && !document.querySelector('.' + SUM_CLASS)) return true;
+
+    return false;
   }
 
   function watch() {
