@@ -2,21 +2,52 @@
    Wavy Boats - doporucene ceny v KOSIKU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 1.0
-   Stav:  Overeno naostro na www.dealerwb.cz/kosik/
+   Verze: 2.0
+   Zaklad: v1.0 (overena naostro, ale jen na produktech BEZ variant)
 
    Co to dela:
-   1) U kazdeho radku kosiku vypise doporucenou cenu za kus
+   1) U kazdeho radku kosiku vypise preskrtnutou doporucenou cenu
+      za kus. Kde je cena dealera shodna, nevypisuje nic (dohoda).
    2) Do souhrnu vpravo prida "Doporucene ceny celkem"
-      (doporucena cena x pocet kusu, secteno za celou objednavku)
+      (doporucena cena x pocet kusu, secteno za celou objednavku).
+   3) Kdyz se u nejake polozky cena nenacte, RIKA TO. Souhrn se
+      nikdy nevydava za kompletni, kdyz kompletni neni.
+
+   ZMENY PROTI VERZI 1.0 (vse vychazi z testu 18. 8. 2026)
+   1) PODPORA VARIANT. v1.0 hledala jen SHOPITEM, jehoz PRIMY
+      potomek CODE se rovna SKU z radku kosiku. U variantniho
+      produktu vsak rodicovsky SHOPITEM v tomto exportu CODE ani
+      PRICE_VAT jako primeho potomka NEMA - jsou az na VARIANT.
+      Dusledek naostro: radek s variantou zustal bez ceny A SOUHRN
+      SE VUBEC NEZMENIL. Kosik za 43 599 Kc hlasil "doporucene ceny
+      celkem 842 Kc", protoze motor za 42 982 Kc do souctu nespadl.
+      Ted se prochazi SHOPITEM i vsechny jeho VARIANT.
+   2) POCTIVY SOUHRN. Kdyz se nejaka polozka nenajde, pod souhrn se
+      vypise, kolika polozek se to tyka (viz INCOMPLETE_*).
+   3) Skryvani pri shodne cene, aby to odpovidalo dohode s klientem.
+      Porovnava se s cenou v radku kosiku
+      (.p-price strong.price-final), tzn. s cenou aktualni session -
+      ne s cenikem z feedu, ktery vraci dealerske ceny vzdy.
+      Preskrtnuti je pripravene, ale VYPNUTE (STRIKETHROUGH: false)
+      - vedoma odchylka od mailu, viz komentar u CONFIG.
+   4) Prekreslovani po zmene mnozstvi. v1.0 se dokazala zaseknout:
+      observer se vracel, kdyz na strance zbyl aspon jeden nas
+      radek, a run() se pri soubehu tise zahodil. Naostro to
+      znamenalo, ze ceny na ~2 s zmizely (mereno: pryc ve 2,6 s,
+      zpatky ve 4,6 s). Ted se hlida i chybejici souhrn, soubezne
+      volani se zaradi do fronty a na dobu prepoctu se vypisuje
+      "Prepocitavam...".
+   5) Cenik se cte jen z PRIMYCH potomku uzlu. v1.0 mela
+      getElementsByTagName('PRICELIST')[0], cimz u variantniho
+      produktu mohla vzit cenik nahodne varianty.
 
    Kod produktu NENI v kosiku videt, ale je v DOM:
    <tr data-micro="cartItem" data-micro-sku="99981T3">
-   Odtud se cte - neni potreba dolovat ho z URL produktu.
+   U varianty je tam kod VARIANTY (overeno: 1001E031A).
 
    Vlozeni: Vzhled a obsah -> Editor -> HTML kody -> paticka
    Muze byt vlozeno soucasne s wavy-rrp-detail.js, scripty se
-   neovlivnuji a sdileji cache pres stejny CACHE_PREFIX.
+   neovlivnuji.
    ============================================================ */
 
 (function () {
@@ -33,31 +64,50 @@
 
     ROW_LABEL: 'Doporučená',
     SUM_LABEL: 'Doporučené ceny celkem:',
+    PENDING_LABEL: 'Přepočítávám…',
+
+    // Preskrtnuti hodnoty.
+    // POZOR: dohoda s klientem (mail) mluvi o PRESKRTNUTE cene.
+    // Vypnuto na vyslovne prani - pri predani to zminte, aby to
+    // nevypadalo jako nedodelek.
+    STRIKETHROUGH: false,
 
     // Vypsat doporucenou cenu i u produktu, kde je shodna s cenou
-    // dealera. Zamerne true - kdyz se u jednoho radku objevi a u
-    // jineho ne, dealer nevi, jestli produkt RRP nema, nebo jestli
-    // se neco nenacetlo.
-    SHOW_WHEN_EQUAL: true,
+    // v radku kosiku. Zamerne false - tak je to popsane v dohode.
+    // POZOR: do SOUCTU se takova polozka pocita vzdy, i kdyz se u
+    // radku nic nevypise. Souhrn je souctem doporucenych cen za
+    // celou objednavku, ne souctem toho, co je videt.
+    SHOW_WHEN_EQUAL: false,
 
     // Zobrazit i rozdil (marze za objednavku). Zamerne vypnuto -
     // je to informace, kterou by mel schvalit klient.
     SHOW_MARGIN: false,
     MARGIN_LABEL: 'Rozdíl:',
 
+    /* ---------- co kdyz se polozka nenajde ---------- */
+    // 'warn' = vypsat souhrn a pod nim upozorneni
+    // 'hide' = nevypisovat souhrn vubec
+    // Nikdy se nevypisuje jen cislo bez upozorneni - nekompletni
+    // souhrn, ktery vypada kompletne, je horsi nez zadny.
+    INCOMPLETE_MODE: 'warn',
+    INCOMPLETE_LABEL: 'Bez doporučené ceny: ',
+    INCOMPLETE_SUFFIX: ' pol. (cena se nenačetla)',
+
     CACHE: true,
-    CACHE_PREFIX: 'wbRrp_',
+    CACHE_PREFIX: 'wbRrp2_',
 
     // Kosik se po zmene mnozstvi prekresluje AJAXem, po prekresleni
     // se musi vlozene radky obnovit.
     WATCH_CHANGES: true,
-    REDRAW_DELAY: 400,
+    REDRAW_DELAY: 250,
 
     DEBUG: false
   };
 
   var ROW_CLASS = 'wb-rrp-cart';
   var SUM_CLASS = 'wb-rrp-sum';
+
+  var lastReport = null;
 
   /* ================= POMOCNE ================= */
 
@@ -68,6 +118,7 @@
   }
 
   function directChild(parent, tagName) {
+    if (!parent) return null;
     var ch = parent.children;
     for (var i = 0; i < ch.length; i++) {
       if (ch[i].tagName.toUpperCase() === tagName) return ch[i];
@@ -75,10 +126,24 @@
     return null;
   }
 
+  function directChildren(parent, tagName) {
+    var out = [];
+    if (!parent) return out;
+    var ch = parent.children;
+    for (var i = 0; i < ch.length; i++) {
+      if (ch[i].tagName.toUpperCase() === tagName) out.push(ch[i]);
+    }
+    return out;
+  }
+
   function toNumber(el) {
     if (!el) return null;
     var n = parseFloat(String(el.textContent).trim().replace(',', '.'));
     return isNaN(n) ? null : n;
+  }
+
+  function norm(s) {
+    return (s === null || s === undefined) ? '' : String(s).trim().toLowerCase();
   }
 
   function formatPrice(value) {
@@ -88,6 +153,17 @@
   function withoutVat(priceWithVat, vatPercent) {
     if (priceWithVat == null) return null;
     return priceWithVat / (1 + (vatPercent || 0) / 100);
+  }
+
+  // Z textu vytahne cislo pred "Kc" (nezlomitelne mezery, oddelovace
+  // tisicu, desetinna carka).
+  function priceFromText(text) {
+    if (!text) return null;
+    var t = String(text).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    var m = t.match(/(-?\d[\d ]*(?:[.,]\d+)?)\s*(?:Kč|Kc|CZK)/i);
+    if (!m) return null;
+    var n = parseFloat(m[1].replace(/ /g, '').replace(',', '.'));
+    return isNaN(n) ? null : n;
   }
 
   /* ================= CTENI Z KOSIKU ================= */
@@ -106,12 +182,65 @@
     return (isNaN(n) || n <= 0) ? 1 : n;
   }
 
+  // Cena za kus s DPH tak, jak ji vidi aktualni navstevnik.
+  // Overena struktura bunky:
+  //   td.p-price > span.p-label + strong.price-final + span.unit-value
+  // Nas vlozeny blok je take v .p-price, proto se pred ctenim
+  // odstranuje z klonu - jinak bychom pri prekresleni cetli sebe.
+  function getRowUnitPrice(row) {
+    var cell = row.querySelector('.p-price');
+    if (!cell) return null;
+
+    var direct = cell.querySelector('strong.price-final, .price-final');
+    if (direct && !direct.closest('.' + ROW_CLASS)) {
+      var value = priceFromText(direct.textContent);
+      if (value != null) return value;
+    }
+
+    var clone = cell.cloneNode(true);
+    var mine = clone.querySelectorAll('.' + ROW_CLASS);
+    for (var i = 0; i < mine.length; i++) mine[i].parentNode.removeChild(mine[i]);
+    return priceFromText(clone.textContent);
+  }
+
   /* ================= FEED ================= */
 
   function feedUrl(code) {
     return CONFIG.FEED_BASE + CONFIG.FEED_QUERY + '&code=' + encodeURIComponent(code);
   }
 
+  // Cenik hleda JEN v primych potomcich uzlu (SHOPITEM nebo VARIANT).
+  // v1.0 tady mela getElementsByTagName, cimz u variantniho produktu
+  // sahla i do PRICELISTS jednotlivych variant.
+  function pickDealerPricelist(node) {
+    var lists = [];
+    directChildren(node, 'PRICELISTS').forEach(function (h) {
+      lists = lists.concat(directChildren(h, 'PRICELIST'));
+    });
+    lists = lists.concat(directChildren(node, 'PRICELIST'));
+
+    for (var i = 0; i < lists.length; i++) {
+      var price = toNumber(directChild(lists[i], 'PRICE_VAT'));
+      if (price != null) return price;
+    }
+    return null;
+  }
+
+  function readNode(node, fallbackVat, fallbackMain, fallbackDealer) {
+    var main = toNumber(directChild(node, 'PRICE_VAT'));
+    var dealer = pickDealerPricelist(node);
+    return {
+      code: directChild(node, 'CODE') ? directChild(node, 'CODE').textContent.trim() : null,
+      vat: toNumber(directChild(node, 'VAT')) || fallbackVat || 0,
+      mainWithVat: main != null ? main : (fallbackMain != null ? fallbackMain : null),
+      dealerWithVat: dealer != null ? dealer : (fallbackDealer != null ? fallbackDealer : null)
+    };
+  }
+
+  // Hleda PRESNOU shodu kodu - v kosiku mame SKU z DOM, takze nema
+  // smysl nic hadat. Filtr &code= je podstringovy (&code=8M02104
+  // vrati 72 produktu), takze "prvni vraceny produkt" by mohl byt
+  // uplne jiny produkt.
   function parseFeed(xmlText, wantedCode) {
     var xml = new DOMParser().parseFromString(xmlText, 'text/xml');
     if (xml.querySelector('parsererror')) {
@@ -119,27 +248,32 @@
       return null;
     }
 
+    var wanted = norm(wantedCode);
     var items = xml.getElementsByTagName('SHOPITEM');
+
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
-      var codeEl = directChild(item, 'CODE');
-      if (!codeEl || codeEl.textContent.trim() !== wantedCode) continue;
+      var base = readNode(item, 0, null, null);
 
-      var dealerWithVat = null;
-      var pl = item.getElementsByTagName('PRICELIST')[0];
-      if (pl) {
-        var pv = pl.getElementsByTagName('PRICE_VAT')[0];
-        if (pv) {
-          var d = parseFloat(String(pv.textContent).replace(',', '.'));
-          dealerWithVat = isNaN(d) ? null : d;
-        }
+      if (base.code && norm(base.code) === wanted) {
+        base.how = 'kód produktu';
+        return base;
       }
 
-      return {
-        vat: toNumber(directChild(item, 'VAT')) || 0,
-        mainWithVat: toNumber(directChild(item, 'PRICE_VAT')),
-        dealerWithVat: dealerWithVat
-      };
+      var variantNodes = [];
+      directChildren(item, 'VARIANTS').forEach(function (h) {
+        variantNodes = variantNodes.concat(directChildren(h, 'VARIANT'));
+      });
+      variantNodes = variantNodes.concat(directChildren(item, 'VARIANT'));
+
+      for (var v = 0; v < variantNodes.length; v++) {
+        // Varianta si dopocitava DPH i cenu z rodice, kdyz vlastni nema.
+        var rec = readNode(variantNodes[v], base.vat, base.mainWithVat, base.dealerWithVat);
+        if (rec.code && norm(rec.code) === wanted) {
+          rec.how = 'kód varianty';
+          return rec;
+        }
+      }
     }
 
     log('produkt', wantedCode, 've feedu nenalezen');
@@ -147,13 +281,13 @@
   }
 
   function loadFeedData(code) {
-    var key = CONFIG.CACHE_PREFIX + code;
+    var key = CONFIG.CACHE_PREFIX + norm(code);
 
     if (CONFIG.CACHE) {
       try {
         var hit = window.sessionStorage.getItem(key);
         if (hit) return Promise.resolve(JSON.parse(hit));
-      } catch (e) { /* ignore */ }
+      } catch (e) { /* sessionStorage nemusi byt k dispozici */ }
     }
 
     return fetch(feedUrl(code), { credentials: 'omit' })
@@ -192,7 +326,8 @@
 
     var value = document.createElement('strong');
     value.textContent = formatPrice(recommended);
-    value.style.cssText = 'color:#333;font-weight:600;';
+    value.style.cssText = 'color:#333;font-weight:600;'
+      + (CONFIG.STRIKETHROUGH ? 'text-decoration:line-through;' : '');
 
     box.appendChild(label);
     box.appendChild(document.createElement('br'));
@@ -218,18 +353,51 @@
     return line;
   }
 
-  function renderSummary(sumRecommended, sumDealer) {
-    var wrap = document.querySelector('.price-wrapper');
+  function summaryBox() {
+    return document.querySelector('.price-wrapper');
+  }
+
+  // Na dobu prepoctu se vypisuje placeholder. Bez nej dealerovi po
+  // zmene mnozstvi radka se souhrnem na ~2 s zmizi a vypada to,
+  // jako by fice byla rozbita.
+  function renderPending() {
+    var wrap = summaryBox();
+    if (!wrap || document.querySelector('.' + SUM_CLASS)) return;
+    var line = renderRowLine(CONFIG.SUM_LABEL, CONFIG.PENDING_LABEL, true);
+    line.style.paddingTop = '10px';
+    line.style.borderTop = '1px solid #e0e0e0';
+    wrap.appendChild(line);
+  }
+
+  function renderSummary(report) {
+    var wrap = summaryBox();
     if (!wrap) { log('souhrnny box nenalezen'); return; }
 
-    var first = renderRowLine(CONFIG.SUM_LABEL, formatPrice(sumRecommended), false);
+    if (report.missing > 0 && CONFIG.INCOMPLETE_MODE === 'hide') {
+      log('souhrn skryt -', report.missing, 'polozek bez ceny');
+      return;
+    }
+
+    var first = renderRowLine(CONFIG.SUM_LABEL, formatPrice(report.sumRecommended), false);
     first.style.paddingTop = '10px';
     first.style.borderTop = '1px solid #e0e0e0';
     wrap.appendChild(first);
 
-    if (CONFIG.SHOW_MARGIN && sumDealer != null) {
+    if (report.missing > 0) {
+      var warn = renderRowLine(
+        CONFIG.INCOMPLETE_LABEL,
+        report.missing + CONFIG.INCOMPLETE_SUFFIX,
+        true
+      );
+      warn.style.color = '#c00';
+      warn.style.fontSize = '12px';
+      wrap.appendChild(warn);
+    }
+
+    if (CONFIG.SHOW_MARGIN && report.sumDealer != null && report.missing === 0) {
       wrap.appendChild(
-        renderRowLine(CONFIG.MARGIN_LABEL, formatPrice(sumRecommended - sumDealer), true)
+        renderRowLine(CONFIG.MARGIN_LABEL,
+          formatPrice(report.sumRecommended - report.sumDealer), true)
       );
     }
   }
@@ -237,22 +405,31 @@
   /* ================= HLAVNI BEH ================= */
 
   var running = false;
+  var queued = false;
 
   function run() {
-    if (running) return;
+    // v1.0 tady jen "if (running) return;" - pri soubehu se druhe
+    // volani tise zahodilo a uz se nikdy nezopakovalo.
+    if (running) { queued = true; return; }
+
     var rows = getRows();
     if (!rows.length) return;
 
     running = true;
     clearRendered();
+    renderPending();
 
     var jobs = rows.map(function (row) {
       var sku = row.getAttribute('data-micro-sku');
-      if (!sku) return Promise.resolve(null);
+
+      // Radek bez SKU (darek, doprava) do rozhodovani nepatri.
+      if (!sku) return Promise.resolve({ skipped: true });
 
       return loadFeedData(sku)
         .then(function (data) {
-          if (!data || data.mainWithVat == null) return null;
+          if (!data || data.mainWithVat == null) {
+            return { sku: sku, missing: true };
+          }
 
           var recommended = CONFIG.SHOW_WITH_VAT
             ? data.mainWithVat
@@ -262,62 +439,163 @@
             ? data.dealerWithVat
             : withoutVat(data.dealerWithVat, data.vat);
 
-          if (recommended == null) return null;
-
-          if (!CONFIG.SHOW_WHEN_EQUAL && dealer != null
-              && Math.round(recommended) <= Math.round(dealer)) {
-            return null;
-          }
+          if (recommended == null) return { sku: sku, missing: true };
 
           var qty = getQuantity(row);
-          renderRow(row, recommended);
+          var onPage = getRowUnitPrice(row);
+
+          // Do souctu polozka patri vzdy. Skryva se jen radek.
+          var visible = true;
+          if (!CONFIG.SHOW_WHEN_EQUAL && onPage != null
+              && Math.round(data.mainWithVat) <= Math.round(onPage)) {
+            visible = false;
+          }
 
           return {
+            sku: sku,
+            unit: recommended,
             recommended: recommended * qty,
-            dealer: dealer != null ? dealer * qty : null
+            dealer: dealer != null ? dealer * qty : null,
+            qty: qty,
+            onPage: onPage,
+            visible: visible
           };
         })
-        .catch(function (err) { log('chyba u', sku, err); return null; });
+        .catch(function (err) {
+          log('chyba u', sku, err);
+          return { sku: sku, missing: true };
+        });
     });
 
     Promise.all(jobs).then(function (results) {
-      var sumRecommended = 0;
-      var sumDealer = 0;
-      var dealerKnown = true;
+      var report = {
+        sumRecommended: 0,
+        sumDealer: 0,
+        dealerKnown: true,
+        missing: 0,
+        items: []
+      };
 
       results.forEach(function (r) {
-        if (!r) return;
-        sumRecommended += r.recommended;
-        if (r.dealer == null) dealerKnown = false;
-        else sumDealer += r.dealer;
+        if (!r || r.skipped) return;
+        if (r.missing) {
+          report.missing++;
+          report.items.push({ sku: r.sku, stav: 'nenalezeno' });
+          return;
+        }
+        report.sumRecommended += r.recommended;
+        if (r.dealer == null) report.dealerKnown = false;
+        else report.sumDealer += r.dealer;
+        report.items.push({
+          sku: r.sku, ks: r.qty, cenaVRadku: r.onPage,
+          doporucenaCelkem: Math.round(r.recommended),
+          vypsano: r.visible
+        });
       });
 
-      if (sumRecommended > 0) {
-        renderSummary(sumRecommended, dealerKnown ? sumDealer : null);
-        log('souhrn', sumRecommended);
+      if (!report.dealerKnown) report.sumDealer = null;
+
+      // Az tady se kresli, jednim prubehem. clearRendered odstrani
+      // i placeholder "Prepocitavam...".
+      clearRendered();
+      results.forEach(function (r, i) {
+        if (r && !r.skipped && !r.missing && r.visible) {
+          renderRow(rows[i], r.unit);
+        }
+      });
+
+      if (report.sumRecommended > 0 || report.missing > 0) {
+        renderSummary(report);
       }
+
+      lastReport = report;
+      log('souhrn', report.sumRecommended, '| bez ceny:', report.missing);
+
       running = false;
+      if (queued) { queued = false; setTimeout(run, 0); }
     });
   }
 
   /* ================= PREKRESLOVANI ================= */
 
+  function needsRedraw() {
+    if (!getRows().length) return false;
+    // v1.0 hlidala jen chybejici radky. Shoptet ale umi prekreslit
+    // jen souhrn vpravo - pak radky zustanou, souhrn zmizi a
+    // observer se vratil, takze souhrn uz se nikdy neobjevil.
+    return !document.querySelector('.' + ROW_CLASS)
+        || !document.querySelector('.' + SUM_CLASS);
+  }
+
   function watch() {
     if (!CONFIG.WATCH_CHANGES) return;
 
     var timer = null;
-    var observer = new MutationObserver(function () {
-      // Prekreslit jen kdyz zmizely nase vlozene prvky, jinak by
-      // se observer spoustel sam od sebe do nekonecna.
-      if (document.querySelector('.' + ROW_CLASS)) return;
-      if (!getRows().length) return;
-
+    function schedule() {
       clearTimeout(timer);
-      timer = setTimeout(run, CONFIG.REDRAW_DELAY);
+      timer = setTimeout(function () {
+        if (needsRedraw()) run();
+      }, CONFIG.REDRAW_DELAY);
+    }
+
+    var observer = new MutationObserver(function (records) {
+      // Ignoruj vlastni vlozene prvky, jinak observer bezi v kruhu.
+      for (var i = 0; i < records.length; i++) {
+        var t = records[i].target;
+        if (t.closest && (t.closest('.' + ROW_CLASS) || t.closest('.' + SUM_CLASS))) continue;
+        schedule();
+        return;
+      }
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
+
+    // Shoptet po zmene kosiku vystreli vlastni event. Kdyz ho tato
+    // verze sablony ma, je to spolehlivejsi nez observer nad body.
+    ['ShoptetDOMCartItemsUpdated', 'ShoptetDOMCartUpdated', 'ShoptetDOMPageContentLoaded']
+      .forEach(function (name) {
+        document.addEventListener(name, function () {
+          log('event', name);
+          schedule();
+        });
+      });
   }
+
+  /* ================= LADICI API ================= */
+
+  window.WB_RRP_KOSIK = {
+    // Na /kosik/ spustit: WB_RRP_KOSIK.debug()
+    debug: function () {
+      var out = {
+        radky: getRows().map(function (r) {
+          return {
+            sku: r.getAttribute('data-micro-sku'),
+            ks: getQuantity(r),
+            cenaVRadku: getRowUnitPrice(r),
+            vypsano: !!r.querySelector('.' + ROW_CLASS)
+          };
+        }),
+        souhrn: (document.querySelector('.' + SUM_CLASS) || {}).textContent || null,
+        report: lastReport
+      };
+      if (window.console) {
+        console.log('[RRP kosik] diagnostika:', out);
+        if (console.table) console.table(out.radky);
+      }
+      return out;
+    },
+    reload: function () {
+      try {
+        Object.keys(window.sessionStorage).forEach(function (k) {
+          if (k.indexOf(CONFIG.CACHE_PREFIX) === 0) window.sessionStorage.removeItem(k);
+        });
+      } catch (e) { /* ignore */ }
+      clearRendered();
+      run();
+    },
+    run: run,
+    config: CONFIG
+  };
 
   /* ================= START ================= */
 
@@ -340,26 +618,33 @@
 })();
 
 /* ============================================================
-   OVERENO 17. 8. 2026 (prihlaseny dealer, cenik VO - Prodej)
+   OVERENO 17. 8. 2026 (v1.0) a 18. 8. 2026 (v2.0)
    ------------------------------------------------------------
-   Kosik se 2 polozkami:
-   99981T3    cena  90 Kc   doporucena  90 Kc  (shodne)
-   8M0210412  cena  47 Kc   doporucena  63 Kc
+   Kosik s 5 polozkami, prihlaseny dealer, cenik VO - Prodej:
+   8M0223380   59 Kc x5   doporucena  86 Kc
+   8M0210412   47 Kc x1   doporucena  63 Kc
+   130651      90 Kc x1   doporucena  90 Kc  <- shodne, radek skryty
+   8M0215696  101 Kc x1   doporucena 137 Kc
+   FO13944     84 Kc x1   doporucena 122 Kc
    ---------------------------------------------
-   Celkem za zbozi         137 Kc
-   Doporucene ceny celkem  153 Kc  (presne 152,91)
+   Celkem za zbozi         617 Kc
+   Doporucene ceny celkem  842 Kc
 
-   CO JESTE NENI OVERENO
-   - zmena mnozstvi v kosiku (AJAX prekresleni). Logika pro nej
-     je pripravena (MutationObserver), ale netestovana naostro.
-     Pri testu zvyste pocet kusu a zkontrolujte, ze se radky vrati
-     a ze souhrn odpovida doporucena x pocet kusu.
+   Zmena mnozstvi 5 -> 6 ks dala spravne 928 Kc.
+
+   PROC v1.0 SELHALA U VARIANT (zmereno, ne odhad)
+   Radek kosiku ma v data-micro-sku kod VARIANTY (1001E031A).
+   Rodicovsky SHOPITEM v tomto exportu nema primy potomek CODE ani
+   PRICE_VAT - jsou az na VARIANT. Podminka v1.0 tedy nikdy
+   neplatila, radek zustal bez ceny a souhrn se nezmenil:
+   kosik za 43 599 Kc hlasil "doporucene ceny celkem 842 Kc".
+
+   CO ZBYVA OVERIT
    - kosik s vetsim mnozstvim polozek. Feed se vola pro kazdy kod
      zvlast (s cache), takze u desitek polozek zvazte stazeni
-     celeho feedu jednim requestem.
-
-   POZNAMKA K CENAM
-   Pocet kusu se cte z input[name="amount"]. V bunce s mnozstvim
-   jsou i skryte inputy itemId a priceId, ktere obsahuji GUID -
-   na ty se nesmi spolehnout, jinak souhrn vyjde vzdy pro 1 ks.
+     celeho feedu jednim requestem. Pozor, cely export je 255 MB,
+     takze "jednim requestem" znamena vlastni endpoint, ne
+     productsComplete.
+   - jestli tato sablona strili ShoptetDOMCartItemsUpdated. Kdyz ano,
+     da se REDRAW_DELAY jeste snizit a observer nad body zrusit.
    ============================================================ */
