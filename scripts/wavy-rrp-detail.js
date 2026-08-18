@@ -167,6 +167,12 @@
     CACHE: true,
     CACHE_PREFIX: 'wbRrp4_',
 
+    // Optional daily-generated public prices JSON (see wavy-rrp-kosik.js)
+    // When set, the script will use this file (no sensitive dealer feed).
+    PRICES_URL: 'https://glos-optimalizace.cz/scripts/ceny.json',
+    PRICES_CACHE: true,
+    PRICES_CACHE_KEY: 'wbRrp4_ceny',
+
     DEBUG: false
   };
 
@@ -175,6 +181,7 @@
   var product = null;      // { base:{...}, variants:[...] }
   var lastRendered = null; // naposledy vypsana hodnota
   var loading = false;
+  var pricesPromise = null;
   var lastDiag = {};
 
   /* ================= POMOCNE ================= */
@@ -654,12 +661,89 @@
       });
   }
 
+  // Stahovani ceny.json (stejne chovani jako v wavy-rrp-kosik.js)
+  function ensurePrices() {
+    if (pricesPromise) return pricesPromise;
+
+    if (!CONFIG.PRICES_URL) return Promise.resolve(null);
+
+    if (CONFIG.PRICES_CACHE) {
+      try {
+        var hit = window.sessionStorage.getItem(CONFIG.PRICES_CACHE_KEY);
+        if (hit) {
+          pricesPromise = Promise.resolve(JSON.parse(hit));
+          return pricesPromise;
+        }
+      } catch (e) { /* sessionStorage nemusi byt k dispozici */ }
+    }
+
+    pricesPromise = fetch(CONFIG.PRICES_URL, { credentials: 'omit' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' - ceny.json nedostupny');
+        return res.json();
+      })
+      .then(function (data) {
+        if (CONFIG.PRICES_CACHE) {
+          try { window.sessionStorage.setItem(CONFIG.PRICES_CACHE_KEY, JSON.stringify(data)); }
+          catch (e) { /* ignore */ }
+        }
+        return data;
+      })
+      .catch(function (err) {
+        log('ceny.json se nepodarilo nacist', err);
+        pricesPromise = null;
+        throw err;
+      });
+
+    return pricesPromise;
+  }
+
   // Zkusi kody postupne - u variant nemusi filtr &code= brat kod varianty.
+  // Pokud je nastaven CONFIG.PRICES_URL, pouzije ten soubor (rychle a bez citlivych dat).
   function loadProduct() {
     var codes = codeCandidates().slice(0, CONFIG.VARIANTS.MAX_FETCH_ATTEMPTS);
     lastDiag.codes = codes;
     lastDiag.attempts = [];
     if (!codes.length) return Promise.resolve(null);
+
+    // If prices.json is configured, prefer it (no dealer feed, public prices only)
+    if (CONFIG.PRICES_URL) {
+      return ensurePrices().then(function (data) {
+        var prices = (data && data.prices) || {};
+        var found = [];
+        for (var i = 0; i < codes.length; i++) {
+          var c = codes[i];
+          if (!c) continue;
+          if (prices.hasOwnProperty(c) && prices[c] != null) {
+            found.push({ code: c, mainWithVat: prices[c] });
+          }
+        }
+        if (!found.length) {
+          log('ceny.json: zadny kod nenalezen pro', codes);
+          return null;
+        }
+
+        // Build product object compatible se zbytkem skriptu
+        var base = {
+          code: found[0].code,
+          vat: 0,
+          mainWithVat: found[0].mainWithVat,
+          dealerWithVat: null,
+          dealerTitle: null
+        };
+        var variants = [];
+        for (var j = 1; j < found.length; j++) {
+          variants.push({ code: found[j].code, vat: 0, mainWithVat: found[j].mainWithVat, dealerWithVat: null, dealerTitle: null, params: [] });
+        }
+
+        var payload = { base: base, variants: variants };
+        try { writeCache(payload); } catch (e) { /* ignore */ }
+        return payload;
+      }).catch(function (err) {
+        log('ceny.json selhalo:', err && err.message);
+        return null;
+      });
+    }
 
     var cached = readCache(codes);
     if (cached) return Promise.resolve(cached);
