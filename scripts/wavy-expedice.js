@@ -86,7 +86,7 @@
       {
         id: 'ihned',
         label: 'Odeslat ihned, co je skladem',
-        info: 'Co máme skladem, odešleme hned – i když je to jen část kusů z položky. Zbytek doobjednáme a pošleme samostatně po naskladnění. Zásilky tedy budou dvě.',
+        info: 'Co máme skladem, odešleme hned – i když je to jen část kusů z objednávky. Zbytek doobjednáme a pošleme samostatně po naskladnění. Zásilky tedy budou dvě.',
         noteText: 'ZPŮSOB EXPEDICE: Skladové produkty odeslat ihned, neskladové následně po naskladnění.'
       },
       {
