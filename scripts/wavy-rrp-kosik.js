@@ -2,7 +2,7 @@
    Wavy Boats - doporucene ceny v KOSIKU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 3.0
+   Verze: 3.1
    Zaklad: v2.0 (varianty a poctivy souhrn overeny naostro
            18. 8. 2026)
 
@@ -46,6 +46,10 @@
    Vlozeni: Vzhled a obsah -> Editor -> HTML kody -> paticka
    Muze byt vlozeno soucasne s wavy-rrp-detail.js, scripty se
    neovlivnuji.
+
+   VERZE 3.1 (20. 8. 2026) - window.WB_RRP_KOSIK.ensurePrices vystaveno
+   navenek, aby wavy-original-code-katalog.js mohl pouzit STEJNY
+   stazeny/cachovany ceny.json namisto dalsiho fetch().
    ============================================================ */
 
 (function () {
@@ -511,7 +515,13 @@
       run();
     },
     run: run,
-    config: CONFIG
+    config: CONFIG,
+
+    // Sdileny pristup k ceny.json pro dalsi skripty na strance (napr.
+    // wavy-original-code-katalog.js) - vraci STEJNY promise/cache jako
+    // kosik, aby se soubor nestahoval podruhe. Bezpecne volat i na
+    // strankach bez kosiku, protoze tento skript je v paticce vsude.
+    ensurePrices: ensurePrices
   };
 
   /* ================= START ================= */
