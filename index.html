@@ -58,16 +58,16 @@
 
         <div class="hero-stats">
           <div class="hero-stat">
-            <div class="hero-stat-value">100 %</div>
-            <div class="hero-stat-label">Spolehlivost dat</div>
+            <div class="hero-stat-value">3</div>
+            <div class="hero-stat-label">Systémy nasazené v denním provozu</div>
           </div>
           <div class="hero-stat">
-            <div class="hero-stat-value">IT + Business</div>
+            <div class="hero-stat-value">IT + provoz</div>
             <div class="hero-stat-label">Technické i procesní know-how</div>
           </div>
           <div class="hero-stat">
-            <div class="hero-stat-value">~35 %</div>
-            <div class="hero-stat-label">Typické zrychlení procesů</div>
+            <div class="hero-stat-value">do 24 h</div>
+            <div class="hero-stat-label">Odpověď na poptávku</div>
           </div>
         </div>
       </div>
@@ -137,9 +137,9 @@
           </div>
           <div class="case-card-content">
             <span class="case-card-tag">Automatizace</span>
-            <h3 class="case-card-title">Automatizace energetických kalkulací a zrychlení B2B prodeje</h3>
+            <h3 class="case-card-title">Čtyři ceníky distributorů v jednom modelu</h3>
             <p class="case-card-excerpt">
-              Migrace z extrémně složitých Excelů s 928 tarifními kombinacemi do robustní databázové architektury. Zrychlení přípravy B2B nabídek na pár kliknutí.
+              Ceny energií se dohledávaly ve čtyřech ceníkách zvlášť a 928 tarifních kombinací nešlo projít ručně. Sjednocení dat a výpočetní jádro, které vrátí prokazatelně nejvýhodnější variantu.
             </p>
             <span class="case-card-link">
               Přečíst studii <span>→</span>
@@ -153,10 +153,27 @@
             <span class="case-icon">📦</span>
           </div>
           <div class="case-card-content">
-            <span class="case-card-tag">Logistika</span>
-            <h3 class="case-card-title">Zrychlení naskladnění e-commerce produktů o 750 %</h3>
+            <span class="case-card-tag">Produktová data</span>
+            <h3 class="case-card-title">Naskladnění z 20 na 170 položek za hodinu</h3>
             <p class="case-card-excerpt">
-              Kompletní digitalizace příjmu zboží pro rodinný e-shop. Zavedení chytré integrace dat a bezdrátové validace pozic pro eliminaci chybovosti.
+              Produktová data se přepisovala ručně, položku po položce. Automatické doplňování chybějících atributů a validace skladové pozice přímo při manipulaci se zbožím.
+            </p>
+            <span class="case-card-link">
+              Přečíst studii <span>→</span>
+            </span>
+          </div>
+        </a>
+
+        <!-- Case 3 -->
+        <a href="case-study.html?id=kampane" class="case-card reveal" id="case-card-kampane">
+          <div class="case-card-image" style="background: linear-gradient(135deg, #3d2b56, #c2410c);">
+            <span class="case-icon">✉️</span>
+          </div>
+          <div class="case-card-content">
+            <span class="case-card-tag">Produktová data + AI</span>
+            <h3 class="case-card-title">Z jedné univerzální kampaně na třináct segmentovaných</h3>
+            <p class="case-card-excerpt">
+              Hybridní výběr produktů do e-mailových rozesílek: marži filtrují pravidla, zajímavost vybírá jazykový model a ceny s odkazy se doplní až nakonec z aktuálních dat e-shopu.
             </p>
             <span class="case-card-link">
               Přečíst studii <span>→</span>
@@ -283,45 +300,41 @@
   <script>
     // --- Navbar scroll effect ---
     const navbar = document.getElementById('navbar');
-    let lastScroll = 0;
 
     window.addEventListener('scroll', () => {
-      const currentScroll = window.scrollY;
-      if (currentScroll > 40) {
+      if (window.scrollY > 40) {
         navbar.classList.add('scrolled');
       } else {
         navbar.classList.remove('scrolled');
       }
-      lastScroll = currentScroll;
     }, { passive: true });
 
     // --- Mobile nav toggle ---
     const navToggle = document.getElementById('navToggle');
     const navLinks = document.getElementById('navLinks');
 
+    function closeNav() {
+      navLinks.classList.remove('open');
+      const spans = navToggle.querySelectorAll('span');
+      spans[0].style.transform = '';
+      spans[1].style.opacity = '';
+      spans[2].style.transform = '';
+    }
+
     navToggle.addEventListener('click', () => {
-      navLinks.classList.toggle('open');
       const spans = navToggle.querySelectorAll('span');
       if (navLinks.classList.contains('open')) {
+        closeNav();
+      } else {
+        navLinks.classList.add('open');
         spans[0].style.transform = 'rotate(45deg) translate(5px, 5px)';
         spans[1].style.opacity = '0';
         spans[2].style.transform = 'rotate(-45deg) translate(5px, -5px)';
-      } else {
-        spans[0].style.transform = '';
-        spans[1].style.opacity = '';
-        spans[2].style.transform = '';
       }
     });
 
-    // Close mobile menu on link click
     navLinks.querySelectorAll('.nav-link').forEach(link => {
-      link.addEventListener('click', () => {
-        navLinks.classList.remove('open');
-        const spans = navToggle.querySelectorAll('span');
-        spans[0].style.transform = '';
-        spans[1].style.opacity = '';
-        spans[2].style.transform = '';
-      });
+      link.addEventListener('click', closeNav);
     });
 
     // --- Scroll reveal ---
@@ -344,7 +357,9 @@
     // --- Smooth scroll for anchor links ---
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       anchor.addEventListener('click', (e) => {
-        const target = document.querySelector(anchor.getAttribute('href'));
+        const href = anchor.getAttribute('href');
+        if (href === '#') return;
+        const target = document.querySelector(href);
         if (target) {
           e.preventDefault();
           target.scrollIntoView({ behavior: 'smooth', block: 'start' });
