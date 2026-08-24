@@ -2,7 +2,7 @@
    Wavy Boats - doporucene ceny v KOSIKU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 3.1
+   Verze: 3.2
    Zaklad: v2.0 (varianty a poctivy souhrn overeny naostro
            18. 8. 2026)
 
@@ -50,6 +50,14 @@
    VERZE 3.1 (20. 8. 2026) - window.WB_RRP_KOSIK.ensurePrices vystaveno
    navenek, aby wavy-original-code-katalog.js mohl pouzit STEJNY
    stazeny/cachovany ceny.json namisto dalsiho fetch().
+
+   VERZE 3.2 (24. 8. 2026, zadani oprav P2/P4) - katalogovy skript uz
+   ensurePrices nevola (presel na vlastni maly kody.json, viz jeho
+   soubor) - vystaveni tu zustava jen jako verejne API pro pripadne
+   dalsi skripty, uz ne kriticka cesta pro katalog. Cache v
+   sessionStorage ted ma verzi a TTL (cacheRead/cacheWrite) namisto
+   drivejsiho neomezeneho zmrazeni na cely zivot zalozky, a
+   PRICES_URL ma ?v= pro cache-busting po nasazeni.
    ============================================================ */
 
 (function () {
@@ -59,7 +67,14 @@
   var CONFIG = {
     // Denne generovany soubor - viz generuj-ceny.py + GitHub Actions
     // workflow. Zadny hash, zadna citliva data.
-    PRICES_URL: 'https://glos-optimalizace.cz/scripts/ceny.json',
+    //
+    // ?v= (zadani oprav 24.8.2026, P2) - cache-busting v URL. GitHub
+    // Pages vraci Cache-Control: max-age=600 a nejde to zmenit (zadna
+    // vlastni HTTP hlavicka na GH Pages neexistuje) - verzovana URL
+    // ale zajisti, ze po nasazeni nove verze dat CACHE_VERSION nize
+    // (P4) okamzite prestane pouzivat starou sessionStorage kopii,
+    // i kdyz by jeste 600s platila HTTP cache prohlizece.
+    PRICES_URL: 'https://glos-optimalizace.cz/scripts/ceny.json?v=20260824',
 
     ROW_LABEL: 'Doporučená',
     SUM_LABEL: 'Doporučené ceny celkem:',
@@ -100,6 +115,16 @@
     CACHE: true,
     CACHE_KEY: 'wbRrp3_ceny',
 
+    // P4 (zadani oprav 24.8.2026): sessionStorage cache drzela 3,21 MB
+    // BEZ casove znacky a bez verze - zustavala zmrazena po celou dobu
+    // zivota zalozky (i kdyz se mezitim ceny.json aktualizoval), a byla
+    // nepohodlne blizko 5MB limitu sessionStorage na Safari/iOS. Ted se
+    // uklada s obalkou {v, ts, data} - CACHE_VERSION zmenit pri kazdem
+    // vyznamnem prevygenerovani dat, CACHE_TTL_MS omezuje, jak dlouho
+    // se zmrazena kopie pouziva bez ohledu na verzi.
+    CACHE_VERSION: '20260824',
+    CACHE_TTL_MS: 30 * 60 * 1000, // 30 minut
+
     // Kosik se po zmene mnozstvi prekresluje AJAXem, po prekresleni
     // se musi vlozene radky obnovit.
     WATCH_CHANGES: true,
@@ -139,20 +164,44 @@
 
   /* ================= CENY.JSON ================= */
 
+  // Cte obalku {v, ts, data} - vraci data jen kdyz verze sedi A jeste
+  // nevyprsel CACHE_TTL_MS. Stara/neverzovana polozka (napr. z pred
+  // P4) proste nesedi na format a spadne do catch -> cte se znovu.
+  function cacheRead() {
+    if (!CONFIG.CACHE) return null;
+    try {
+      var raw = window.sessionStorage.getItem(CONFIG.CACHE_KEY);
+      if (!raw) return null;
+      var envelope = JSON.parse(raw);
+      if (!envelope || envelope.v !== CONFIG.CACHE_VERSION) return null;
+      if (Date.now() - envelope.ts > CONFIG.CACHE_TTL_MS) return null;
+      return envelope.data;
+    } catch (e) {
+      return null; // sessionStorage nemusi byt k dispozici / poskozeny zaznam
+    }
+  }
+
+  function cacheWrite(data) {
+    if (!CONFIG.CACHE) return;
+    try {
+      window.sessionStorage.setItem(CONFIG.CACHE_KEY,
+        JSON.stringify({ v: CONFIG.CACHE_VERSION, ts: Date.now(), data: data }));
+    } catch (e) {
+      /* QuotaExceededError apod. - cache je jen bonus, pokracuj bez ni */
+    }
+  }
+
   // Stahne se jen jednou (modulova promenna), navic si to drzi
-  // sessionStorage, aby se pri navratu na kosik ve stejne relaci
-  // nemuselo znovu stahovat.
+  // sessionStorage (s TTL a verzi - viz cacheRead/cacheWrite, P4),
+  // aby se pri navratu na kosik ve stejne relaci nemuselo znovu
+  // stahovat.
   function ensurePrices() {
     if (pricesPromise) return pricesPromise;
 
-    if (CONFIG.CACHE) {
-      try {
-        var hit = window.sessionStorage.getItem(CONFIG.CACHE_KEY);
-        if (hit) {
-          pricesPromise = Promise.resolve(JSON.parse(hit));
-          return pricesPromise;
-        }
-      } catch (e) { /* sessionStorage nemusi byt k dispozici */ }
+    var cached = cacheRead();
+    if (cached) {
+      pricesPromise = Promise.resolve(cached);
+      return pricesPromise;
     }
 
     pricesPromise = fetch(CONFIG.PRICES_URL, { credentials: 'omit' })
@@ -161,10 +210,7 @@
         return res.json();
       })
       .then(function (data) {
-        if (CONFIG.CACHE) {
-          try { window.sessionStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify(data)); }
-          catch (e) { /* ignore */ }
-        }
+        cacheWrite(data);
         return data;
       })
       .catch(function (err) {

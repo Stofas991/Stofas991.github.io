@@ -2,13 +2,24 @@
    Wavy Boats - puvodni kod na DETAILU PRODUKTU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 1.0
+   Verze: 2.0
 
    Presune hodnotu popisneho parametru "Puvodni kod" z bloku
    .detail-parameters k aktualnimu kodu v .p-code. Cte se primo
    z DOM - zadna zavislost na ceny.json, zadny fetch.
 
-   OVERENO NAOSTRO (20. 8. 2026, dealerwb.cz, /adaptor-37/, kod 815303T)
+   ZMENY PROTI v1.0 (zadani oprav 24.8.2026):
+   P3 - watchChanges() sledovala konkretni uzly zjistene pri startu.
+        Kdyz Shoptet cely uzel NAHRADIL (ne jen zmenil obsah), sledovany
+        uzel se odpojil a observer prestal navzdy fungovat - box zustal
+        mrtvy (reprodukovano naostro: document.querySelector('.p-detail-
+        inner-header').replaceWith(...) skript zabilo). Ted se sleduje
+        cely document.body, stejny vzor jako v katalogovem skriptu.
+   P7 - CODE_ANCHOR_SELECTOR zuzen na '.p-detail-inner-header .p-code',
+        aby box nemohl skoncit u ciziho produktu, kdyby se nekdy na
+        strance objevil dalsi .p-code (napr. souvisejici zbozi).
+
+   OVERENO NAOSTRO (20.-24. 8. 2026, dealerwb.cz, /adaptor-37/, kod 815303T)
    - .p-code je <span class="p-code"> uvnitr .p-detail-inner-header,
      display:inline-block. Vlastni box proto MUSI byt display:block,
      jinak nezalomi na novy radek.
@@ -36,7 +47,13 @@
     PARAM_NAME: 'Původní kód',
     LABEL: 'Původní kód:',
     PARAMETERS_SELECTOR: '.detail-parameters',
-    CODE_ANCHOR_SELECTOR: '.p-code',
+
+    // Zuzeno z '.p-code' (P7, zadani oprav 24.8.2026): na testovanem
+    // detailu je .p-code jen jeden, ale kdyby sablona nekdy vykreslila
+    // souvisejici zbozi s vlastnimi .p-code nad hlavickou produktu,
+    // box by mohl skoncit u ciziho produktu. Kotva je proto zuzena na
+    // hlavicku produktu.
+    CODE_ANCHOR_SELECTOR: '.p-detail-inner-header .p-code',
 
     // Stranka prekresluje kod/cenu AJAXem po zmene varianty (viz
     // wavy-rrp-detail.js) - kdyby se stejnym zpusobem prekreslovaly
@@ -170,24 +187,25 @@
       }, CONFIG.debounceMs);
     }
 
-    var targets = [];
-    document.querySelectorAll(CONFIG.PARAMETERS_SELECTOR).forEach(function (t) { targets.push(t); });
-    var anchor = document.querySelector(CONFIG.CODE_ANCHOR_SELECTOR);
-    if (anchor) targets.push(anchor.parentNode || anchor);
+    if (!window.MutationObserver) return;
 
-    if (targets.length && window.MutationObserver) {
-      var obs = new MutationObserver(function (records) {
-        for (var i = 0; i < records.length; i++) {
-          var t = records[i].target;
-          if (t.closest && t.closest('.' + CSS_CLASS)) continue; // ignoruj vlastni box
-          ping('dom');
-          return;
-        }
-      });
-      targets.forEach(function (t) {
-        obs.observe(t, { childList: true, subtree: true, characterData: true });
-      });
-    }
+    // P3 (zadani oprav 24.8.2026): puvodne se sledovaly konkretni
+    // uzly zjistene pri startu (.detail-parameters tabulky + rodic
+    // .p-code). Kdyz Shoptet nekdy cely uzel NAHRADIL (replaceWith/
+    // outerHTML), sledovany uzel se odpojil od stromu a observer uz
+    // nikdy nic nezachytil - box zustal natrvalo mrtvy, reprodukovano
+    // naostro. Sledovanim document.body (stejny vzor jako
+    // wavy-original-code-katalog.js) tohle nemuze nastat - klidova
+    // zatez je nulova (0 mutaci DOM za 5s necinnosti, overeno).
+    var obs = new MutationObserver(function (records) {
+      for (var i = 0; i < records.length; i++) {
+        var t = records[i].target;
+        if (t.closest && t.closest('.' + CSS_CLASS)) continue; // ignoruj vlastni box
+        ping('dom');
+        return;
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true, characterData: true });
   }
 
   function init() {

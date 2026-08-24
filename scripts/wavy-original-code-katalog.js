@@ -2,19 +2,27 @@
    Wavy Boats - puvodni kod ve VYPISU KATALOGU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 1.0
+   Verze: 2.0
 
    Pro kazdou dlazdici vezme kod z [data-micro="sku"], dohleda ho
-   v originalCodes (ceny.json) a vykresli pod kod produktu.
+   v kody.json a vykresli pod kod produktu.
 
-   ZDROJ DAT: STEJNY ceny.json jako wavy-rrp-kosik.js - znovu
-   pouziva jeho window.WB_RRP_KOSIK.ensurePrices(), NESTAHUJE
-   soubor podruhe. Pokud kosikovy skript neni na strance nacteny
-   (nemel by nastat - oba jsou v paticce), original kod se proste
-   nevypise (fail-silent, zadny vlastni fetch jako zaloha - to by
-   porusilo cely smysl znovupouziti).
+   ZMENY PROTI v1.0 (zadani oprav 24.8.2026, P1/P5/P6):
+   1) ZDROJ DAT - vlastni lehky fetch kody.json (jednotky kB), misto
+      volani window.WB_RRP_KOSIK.ensurePrices(). v1.0 si pro jedno
+      mapovani tahala celych 3,4 MB ceny.json, a navic na KAZDE
+      strance (i na kategoriich, kde kosikovy skript sam o sobe
+      nic nestahuje - fetch spoustela prave tahle reuse volba).
+      Vlastni promise je stejne memoizovana, takze se kody.json
+      taky nestahuje vickrat.
+   2) run() uz nesbira [data-micro="sku"] pred fetchem - kdyby se
+      vypis mezitim prekreslil (AJAX razeni/filtr), sbiralo se do
+      uzlu, ktere uz nemusely byt v dokumentu. Sbira se az uvnitr
+      .then().
+   3) skuEls.forEach nahrazeno [].slice.call(skuEls).forEach -
+      NodeList.forEach chybi na starsich Android WebView/IE11.
 
-   OVERENO NAOSTRO (20.-21. 8. 2026, dealerwb.cz, /adaptery/,
+   OVERENO NAOSTRO (20.-24. 8. 2026, dealerwb.cz, /adaptery/,
    kod 815303T / puvodni 815303):
    - [data-micro="sku"] je <span> primo uvnitr <span class="p-code">.
    - .p-code je v dlazdici POSITION:ABSOLUTE (top:0; right:0) presne
@@ -28,10 +36,12 @@
      radek - dlazdice bez puvodniho kodu zustavaji uplne beze zmeny
      (zadna trida, zadny inline styl navic).
    - 30 dlazdic na kategorii = 30 [data-micro="sku"] uzlu, presna
-     shoda (overeno driv, viz spec).
+     shoda. 30/30 sparovano bez falesnych shod, dlouha hodnota
+     (40 znaku) se orizne (ellipsis), nepreteka z dlazdice.
 
    Vlozeni: Vzhled a obsah -> Editor -> HTML kody -> paticka
-   (za wavy-rrp-kosik.js, aby WB_RRP_KOSIK uz existoval)
+   (poradi vuci ostatnim skriptum uz nehraje roli - nezavisi na
+   wavy-rrp-kosik.js)
    ============================================================ */
 
 (function () {
@@ -40,6 +50,15 @@
   var CONFIG = {
     TILE_SKU_SELECTOR: '[data-micro="sku"]',
     LABEL: 'Původní kód:',
+
+    // Verzovat pri kazdem prevygenerovani kody.json, aby se po
+    // nasazeni nove verze nezobrazovala stara data ze zapocateho
+    // HTTP cache okna (GitHub Pages: max-age=600, nejde zmenit -
+    // neumoznuje vlastni HTTP hlavicky). Verze je jen cache-busting
+    // v URL, nema vliv na spravnost dat, jen na to, jak rychle se
+    // projevi nova.
+    CODES_URL: 'https://glos-optimalizace.cz/scripts/kody.json?v=20260824',
+
     WATCH_CHANGES: true,
     debounceMs: 250,
     DEBUG: false
@@ -70,12 +89,23 @@
     document.head.appendChild(style);
   }
 
-  function ensurePrices() {
-    if (window.WB_RRP_KOSIK && typeof window.WB_RRP_KOSIK.ensurePrices === 'function') {
-      return window.WB_RRP_KOSIK.ensurePrices();
-    }
-    log('WB_RRP_KOSIK.ensurePrices nenalezen - nevypisuji (zadny vlastni fetch jako zaloha)');
-    return Promise.reject(new Error('WB_RRP_KOSIK neni k dispozici'));
+  // Vlastni memoizovany fetch - NEVOLA WB_RRP_KOSIK. Duvod zmeny
+  // viz hlavicka souboru (P1): kody.json je v jednotkach kB, na
+  // rozdil od 3,4 MB ceny.json nema smysl ho vazat na kosikovy
+  // skript ani na to, jestli je na strance co vykreslit v kosiku.
+  var codesPromise = null;
+  function ensureCodes() {
+    if (codesPromise) return codesPromise;
+    codesPromise = fetch(CONFIG.CODES_URL, { credentials: 'omit' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' - kody.json nedostupny');
+        return res.json();
+      })
+      .catch(function (err) {
+        codesPromise = null; // dalsi run() to zkusi znovu, netrvale se nevzdavat
+        throw err;
+      });
+    return codesPromise;
   }
 
   function renderForTile(skuEl, value) {
@@ -91,12 +121,16 @@
   }
 
   function run() {
-    var skuEls = document.querySelectorAll(CONFIG.TILE_SKU_SELECTOR);
-    if (!skuEls.length) return;
+    if (!document.querySelector(CONFIG.TILE_SKU_SELECTOR)) return;
 
-    ensurePrices()
-      .then(function (data) {
-        var originalCodes = (data && data.originalCodes) || {};
+    ensureCodes()
+      .then(function (originalCodes) {
+        originalCodes = originalCodes || {};
+
+        // Dlazdice se sbiraji AZ TADY, ne pred fetchem - stranka se
+        // mezitim mohla prekreslit (AJAX razeni/filtr) a stare uzly
+        // uz nemusi byt v dokumentu.
+        var skuEls = [].slice.call(document.querySelectorAll(CONFIG.TILE_SKU_SELECTOR));
         var rendered = 0;
 
         skuEls.forEach(function (skuEl) {
@@ -113,9 +147,9 @@
         log('vykresleno', rendered, 'z', skuEls.length, 'dlazdic');
       })
       .catch(function (err) {
-        // AC4: vypadek ceny.json = vypis funguje jako dnes, zadna
+        // AC4: vypadek kody.json = vypis funguje jako dnes, zadna
         // chyba viditelna uzivateli. log() je gated na DEBUG.
-        log('ceny.json/originalCodes se nepodarilo nacist:', err && err.message);
+        log('kody.json se nepodarilo nacist:', err && err.message);
       });
   }
 

@@ -4,30 +4,39 @@ Wavy Boats - denni generovani verejnych dat z productsComplete.xml
 --------------------------------------------------------------------
 Bezi jako GitHub Actions job jednou denne. Stahuje CELY export
 (obsahuje hash, ktery NIKDY nesmi jit do klientskych skriptu) a
-vyrobi z nej tri verejne bezpecne vystupy:
+vyrobi z nej dva verejne bezpecne vystupni soubory:
 
-  "prices"        - {kod: verejna_cena} pro VSECHNY kody, tzn.
-                     zaklad. produkty i jednotlive varianty.
-                     Pouziva ho kosikovy skript, kde je kod z
-                     data-micro-sku uz presny.
+  ceny.json:
+    "prices"        - {kod: verejna_cena} pro VSECHNY kody, tzn.
+                       zaklad. produkty i jednotlive varianty.
+                       Pouziva ho kosikovy skript, kde je kod z
+                       data-micro-sku uz presny.
 
-  "variantGroups" - jen pro produkty s variantami (~60 z ~43000).
-                     Kazdy clen skupiny je pod SVYM VLASTNIM kodem
-                     jako klic, takze detailovy skript nalezne
-                     skupinu z jakehokoli kodu, ktery ma po ruce.
-                     Obsahuje kod, cenu a hodnoty parametru (napr.
-                     "Model: Mercury R150L DS") - to jsou udaje,
-                     ktere Shoptet uz sam zobrazuje verejne v
-                     prepinaci varianty, takze nejde o nic citliveho.
+    "variantGroups" - jen pro produkty s variantami (~60 z ~43000).
+                       Kazdy clen skupiny je pod SVYM VLASTNIM kodem
+                       jako klic, takze detailovy skript nalezne
+                       skupinu z jakehokoli kodu, ktery ma po ruce.
+                       Obsahuje kod, cenu a hodnoty parametru (napr.
+                       "Model: Mercury R150L DS") - to jsou udaje,
+                       ktere Shoptet uz sam zobrazuje verejne v
+                       prepinaci varianty, takze nejde o nic citliveho.
 
-  "originalCodes" - {kod: puvodni_kod} jen pro produkty/varianty,
-                     ktere maji vyplneny popisny parametr "Puvodni
-                     kod" (admin: Popisne parametry, v XML tag
-                     TEXT_PROPERTIES/TEXT_PROPERTY). Overeno naostro
-                     20. 8. 2026 na kodu 815303T. Shoptet uz tuto
-                     hodnotu sam zobrazuje verejne na detailu (a
-                     dokonce i v SHORT_DESCRIPTION), takze nejde o
-                     rozsireni citlivych dat.
+  kody.json:
+    {kod: puvodni_kod} - plocha mapa, zadny obal - jen pro produkty/
+                       varianty, ktere maji vyplneny popisny parametr
+                       "Puvodni kod" (admin: Popisne parametry, v XML
+                       tag TEXT_PROPERTIES/TEXT_PROPERTY). Overeno
+                       naostro 20. 8. 2026 na kodu 815303T. Shoptet uz
+                       tuto hodnotu sam zobrazuje verejne na detailu
+                       (a dokonce i v SHORT_DESCRIPTION), takze nejde
+                       o rozsireni citlivych dat.
+
+                       DRIVE byl tento klic uvnitr ceny.json jako
+                       "originalCodes" - vycleneno do vlastniho
+                       souboru 24.8.2026 (zadani oprav P1), protoze
+                       katalogovy skript pro nej tahal celych 3,4 MB
+                       ceny.json jen pro jedno mapovani o velikosti
+                       jednotek kB.
 
 Nikdy se nectou tagy PURCHASE_PRICE, PRICELIST/PRICELISTS,
 INTERNAL_NOTE ani STOCK - jen CODE, PRICE_VAT, PARAMETER/VALUE a
@@ -57,6 +66,12 @@ PATTERN_ID = "-5"
 PARTNER_ID = "10"
 
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "ceny.json")
+
+# Puvodni kody zvlast od cen/variant - viz P1 v zadani oprav (24.8.2026):
+# katalogovy skript potreboval jen originalCodes, ale tahal si pro to
+# celych 3,4 MB ceny.json. kody.json je stejna data (podmnozina), ale
+# v jednotkach kB - {"aktualni_kod": "puvodni_kod", ...}, bez obalu.
+OUTPUT_PATH_CODES = os.path.join(os.path.dirname(__file__), "kody.json")
 
 
 def feed_url() -> str:
@@ -233,20 +248,25 @@ def generate():
         resp.raw.decode_content = True
         result = parse_products(resp.raw)
 
+    # ceny.json uz originalCodes NEobsahuje - katalogovy skript ted cte
+    # samostatny kody.json (P1), takze by to byla jen mrtva duplicita.
     output = {
         "prices": result["prices"],
         "variantGroups": result["variantGroups"],
-        "originalCodes": result["originalCodes"],
     }
 
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, separators=(",", ":"))
 
+    with open(OUTPUT_PATH_CODES, "w", encoding="utf-8") as f:
+        json.dump(result["originalCodes"], f, ensure_ascii=False, separators=(",", ":"))
+
     print(f"Hotovo: {len(output['prices'])} kodu, {len(output['variantGroups'])} kodu ve "
           f"skupinach variant (z {result['seenVariants']} variant), "
-          f"{len(output['originalCodes'])} puvodnich kodu, "
+          f"{len(result['originalCodes'])} puvodnich kodu, "
           f"produktu v feedu: {result['seenProducts']}")
     print(f"Ulozeno do: {OUTPUT_PATH}")
+    print(f"Ulozeno do: {OUTPUT_PATH_CODES}")
 
 
 if __name__ == "__main__":
