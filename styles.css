@@ -1238,6 +1238,125 @@ ul, ol {
   display: none;
 }
 
+/* --- Reference (sekce #reference na homepage) --- */
+.references-header {
+  max-width: 640px;
+  margin-bottom: 48px;
+}
+
+/* auto-fit: pri jedne referenci jedna siroka karta, pri dvou a vic
+   se samo rozpadne do sloupcu. Omezena sirka, aby jedina reference
+   nepusobila jako nedodelana mrizka. */
+.references-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+  max-width: 900px;
+}
+
+.reference-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-glass-border);
+  border-radius: var(--border-radius);
+  padding: 36px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.reference-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  border-radius: 3px 0 0 3px;
+  background: var(--accent);
+}
+
+.reference-text {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  font-style: italic;
+  flex-grow: 1;
+}
+
+.reference-text::before {
+  content: '„';
+}
+
+.reference-text::after {
+  content: '"';
+}
+
+.reference-footer {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+/* Stejny duvod jako u .case-quote-logo: predloha je tmava na
+   pruhlednem pozadi, karta je tmava. Svetla podlozka zachova firemni
+   barvy, prebarveni filtrem by dvoubarevne logo slilo do skvrny. */
+.reference-logo {
+  height: 46px;
+  width: auto;
+  max-width: 130px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-sizing: content-box;
+  flex-shrink: 0;
+}
+
+.reference-logo[hidden] {
+  display: none;
+}
+
+.reference-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reference-author {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.reference-company {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.reference-link {
+  margin-top: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: gap var(--transition-fast);
+  align-self: flex-start;
+}
+
+.reference-link:hover {
+  gap: 12px;
+}
+
+.references[hidden] {
+  display: none;
+}
+
 /* --- Scroll Reveal Animation --- */
 .reveal {
   opacity: 0;
@@ -1335,6 +1454,18 @@ ul, ol {
   }
 
   .case-quote-text {
+    font-size: 0.95rem;
+  }
+
+  .references-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-card {
+    padding: 28px 24px;
+  }
+
+  .reference-text {
     font-size: 0.95rem;
   }
 }

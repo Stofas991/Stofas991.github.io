@@ -18,6 +18,7 @@
       <div class="nav-links" id="navLinks">
         <a href="index.html#services" class="nav-link">Služby</a>
         <a href="index.html#case-studies" class="nav-link">Případové studie</a>
+        <a href="index.html#reference" class="nav-link">Reference</a>
         <a href="index.html#about" class="nav-link">O mně</a>
         <a href="index.html#contact" class="nav-link">Kontakt</a>
         <a href="mailto:krystof@glos-optimalizace.cz" class="btn btn-primary nav-cta">Konzultace</a>
@@ -158,6 +159,7 @@
   </footer>
 
   <!-- ========== SCRIPTS ========== -->
+  <script src="references.js"></script>
   <script>
     // --- Case Study Data ---
     // Pozn.: tento objekt je zdroj pravdy. Statické HTML výše se při načtení přepíše.
@@ -300,14 +302,24 @@
             { value: '0', label: 'Nákupních cen a skladových stavů v prohlížeči' },
             { value: '1× denně', label: 'Automatická aktualizace dat bez ruční údržby' }
           ]
-        },
-        quote: {
-          text: 'Na naší spolupráci nám velmi vyhovovala rychlost zpracování požadovaných úprav našeho e-shopu. Veškerá Vaše práce splnila naše očekávání a potěšilo nás, že jsme si ve všem ihned porozuměli. Projekt nám vyřešil lepší přehlednost a průběh objednávek pro naše zákazníky. V případě dalších úprav se na Vás velmi rádi obrátíme.',
-          author: 'Pavlína Pracnová, Wavy Boats',
-          logo: { src: 'wavyboats_logo.webp', alt: 'Wavy Boats' }
         }
+        // Citace klienta tu ZAMERNE neni - bere se z references.js podle
+        // klice studie, aby stejny text nebyl na webu na dvou mistech.
       }
     };
+
+    // Reference pro danou studii. Kdyby se references.js nenacetl,
+    // vrati null a blok s citaci se proste nevykresli.
+    function referenceFor(id) {
+      if (typeof REFERENCES === 'undefined') return null;
+      const ref = REFERENCES.filter(r => r.caseId === id)[0];
+      if (!ref) return null;
+      return {
+        text: ref.text,
+        author: ref.author + ', ' + ref.company,
+        logo: ref.logo
+      };
+    }
 
     // --- Load Case Study from URL parameter ---
     function loadCaseStudy() {
@@ -350,16 +362,17 @@
       // Citace klienta - nepovinna, ma ji zatim jen cast studii
       const quoteEl = document.getElementById('caseQuote');
       const logoEl = document.getElementById('caseQuoteLogo');
-      if (study.quote) {
-        document.getElementById('caseQuoteText').textContent = study.quote.text;
-        document.getElementById('caseQuoteAuthor').textContent = study.quote.author;
+      const quote = referenceFor(id);
+      if (quote) {
+        document.getElementById('caseQuoteText').textContent = quote.text;
+        document.getElementById('caseQuoteAuthor').textContent = quote.author;
 
         // Logo je nepovinne. Kdyby soubor chybel, onerror ho schova -
         // radeji citace bez loga nez rozbita ikona.
-        if (study.quote.logo) {
+        if (quote.logo) {
           logoEl.onerror = function () { logoEl.hidden = true; };
-          logoEl.src = study.quote.logo.src;
-          logoEl.alt = study.quote.logo.alt;
+          logoEl.src = quote.logo.src;
+          logoEl.alt = quote.logo.alt;
           logoEl.hidden = false;
         } else {
           logoEl.hidden = true;

@@ -18,6 +18,7 @@
       <div class="nav-links" id="navLinks">
         <a href="#services" class="nav-link">Služby</a>
         <a href="#case-studies" class="nav-link">Případové studie</a>
+        <a href="#reference" class="nav-link">Reference</a>
         <a href="#about" class="nav-link">O mně</a>
         <a href="#contact" class="nav-link">Kontakt</a>
         <a href="mailto:krystof@glos-optimalizace.cz" class="btn btn-primary nav-cta">Konzultace</a>
@@ -201,6 +202,23 @@
     </div>
   </section>
 
+  <!-- ========== REFERENCES ========== -->
+  <!-- Samostatna sekce se sdilitelnou kotvou /#reference - obsah se
+       vykresluje z references.js, aby citace nebyla na webu dvakrat. -->
+  <section class="references section" id="reference">
+    <div class="container">
+      <div class="references-header reveal">
+        <span class="section-label">Reference</span>
+        <h2 class="section-title">Co říkají klienti</h2>
+        <p class="section-subtitle">
+          Ohlasy od lidí, se kterými jsem spolupracoval. U&nbsp;každé reference se dá prokliknout na případovou studii konkrétního projektu.
+        </p>
+      </div>
+
+      <div class="references-grid" id="referencesGrid"></div>
+    </div>
+  </section>
+
   <!-- ========== ABOUT ========== -->
   <section class="about section" id="about">
     <div class="container">
@@ -285,6 +303,7 @@
           <div class="footer-links">
             <a href="#services" class="footer-link">Služby</a>
             <a href="#case-studies" class="footer-link">Případové studie</a>
+            <a href="#reference" class="footer-link">Reference</a>
             <a href="#about" class="footer-link">O mně</a>
             <a href="#contact" class="footer-link">Kontakt</a>
           </div>
@@ -314,7 +333,75 @@
   </footer>
 
   <!-- ========== SCRIPTS ========== -->
+  <script src="references.js"></script>
   <script>
+    // --- Reference ---
+    // Vykresluje se z references.js. Kdyby se soubor nenacetl nebo byl
+    // seznam prazdny, cela sekce se skryje - lepsi nez prazdny nadpis
+    // "Co říkají klienti" bez jedine reference pod nim.
+    function renderReferences() {
+      const section = document.getElementById('reference');
+      const grid = document.getElementById('referencesGrid');
+      if (!grid) return;
+
+      if (typeof REFERENCES === 'undefined' || !REFERENCES.length) {
+        if (section) section.hidden = true;
+        return;
+      }
+
+      REFERENCES.forEach(ref => {
+        const card = document.createElement('figure');
+        card.className = 'reference-card reveal';
+
+        const text = document.createElement('blockquote');
+        text.className = 'reference-text';
+        text.textContent = ref.text;
+
+        const footer = document.createElement('figcaption');
+        footer.className = 'reference-footer';
+
+        if (ref.logo) {
+          const logo = document.createElement('img');
+          logo.className = 'reference-logo';
+          logo.alt = ref.logo.alt;
+          logo.onerror = () => { logo.hidden = true; };
+          logo.src = ref.logo.src;
+          footer.appendChild(logo);
+        }
+
+        const who = document.createElement('div');
+        who.className = 'reference-who';
+
+        const author = document.createElement('span');
+        author.className = 'reference-author';
+        author.textContent = ref.author;
+
+        const company = document.createElement('span');
+        company.className = 'reference-company';
+        company.textContent = ref.company;
+
+        who.appendChild(author);
+        who.appendChild(company);
+        footer.appendChild(who);
+
+        card.appendChild(text);
+        card.appendChild(footer);
+
+        // Odkaz na studii jen tehdy, kdyz k referenci nejaka patri.
+        if (ref.caseId) {
+          const link = document.createElement('a');
+          link.className = 'reference-link';
+          link.href = 'case-study.html?id=' + encodeURIComponent(ref.caseId);
+          link.innerHTML = 'Přečíst případovou studii <span>→</span>';
+          card.appendChild(link);
+        }
+
+        grid.appendChild(card);
+      });
+    }
+
+    renderReferences();
+
     // --- Navbar scroll effect ---
     const navbar = document.getElementById('navbar');
 
