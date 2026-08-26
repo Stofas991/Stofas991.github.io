@@ -5,7 +5,7 @@ on:
     - cron: '0 3 * * *'   # kazdy den ve 3:00 UTC (5:00 letniho casu CZ)
   workflow_dispatch:        # tlacitko "Run workflow" v GitHub UI
 
-# Job potrebuje pravo zapisu, aby mohl commitnout ceny.json zpatky.
+# Job potrebuje pravo zapisu, aby mohl commitnout vysledky zpatky.
 permissions:
   contents: write
 
@@ -31,6 +31,12 @@ jobs:
         run: |
           git config user.name "ceny-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add scripts/ceny.json
-          git diff --staged --quiet || git commit -m "Aktualizace cen $(date -u +%Y-%m-%d)"
+          # POZOR: generuj-ceny.py pise DVA soubory - ceny.json i kody.json
+          # (puvodni kody, oddelene 24.8.2026). Kdyz se tady prida jen
+          # ceny.json, kody.json zustane navzdy na verzi, ktera se do repa
+          # dostala naposledy rucne - nove vyplnene puvodni kody by se ve
+          # vypisu katalogu nikdy neobjevily. Pri pridani dalsiho vystupu
+          # do generatoru ho pridej i sem.
+          git add scripts/ceny.json scripts/kody.json
+          git diff --staged --quiet || git commit -m "Aktualizace dat $(date -u +%Y-%m-%d)"
           git push
