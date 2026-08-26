@@ -939,6 +939,18 @@ ul, ol {
   margin-bottom: 80px;
 }
 
+/* Dve CTA vedle sebe (e-mail + telefon). Na uzkem displeji se
+   zalomi pod sebe, proto wrap a zarovnani na stred. */
+.cta-banner-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+
 .cta-banner::before {
   content: '';
   position: absolute;
@@ -1236,6 +1248,14 @@ ul, ol {
    vykreslila u studii, ktere zadnou nemaji. */
 .case-quote[hidden] {
   display: none;
+}
+
+/* Dve tlacitka v sekci O mne (konzultace + reference). */
+.about-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 /* --- Reference (sekce #reference na homepage) --- */
