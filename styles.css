@@ -1149,6 +1149,95 @@ ul, ol {
   margin-top: 4px;
 }
 
+/* --- Citace klienta (nepovinna, viz `quote` v caseStudies) --- */
+.case-quote {
+  max-width: 800px;
+  margin: 48px 0 0;
+  padding: 40px;
+  background: var(--bg-card);
+  border: 1px solid var(--bg-glass-border);
+  border-radius: var(--border-radius);
+  position: relative;
+  overflow: hidden;
+}
+
+.case-quote::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  border-radius: 3px 0 0 3px;
+  background: var(--accent);
+}
+
+.case-quote-text {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: var(--text-primary);
+  font-style: italic;
+}
+
+.case-quote-text::before {
+  content: '„';
+}
+
+.case-quote-text::after {
+  content: '"';
+}
+
+.case-quote-footer {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+/* Logo klienta.
+   Predloha je tmave modra na pruhlednem pozadi, karta je tmava
+   (#161616) - logo by na ni zaniklo. Resenim je svetla podlozka,
+   NE prebarveni filtrem: logo je dvoubarevne (tmave "W", svetla
+   vlna) a jakykoli filter typu brightness(0) invert(1) by obe
+   slil do jedne bile skvrny. Takhle zustanou firemni barvy presne
+   tak, jak maji byt. */
+.case-quote-logo {
+  height: 52px;
+  width: auto;
+  max-width: 140px;
+  /* Bez object-fit by max-width pri sirsi predloze logo vodorovne
+     stlacil - deformovana ochranna znamka je horsi nez zadna. */
+  object-fit: contain;
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-sizing: content-box;
+  flex-shrink: 0;
+}
+
+.case-quote-logo[hidden] {
+  display: none;
+}
+
+.case-quote-author {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.case-quote-author::before {
+  content: '— ';
+}
+
+/* [hidden] musi prebit display z .reveal, jinak by se prazdna citace
+   vykreslila u studii, ktere zadnou nemaji. */
+.case-quote[hidden] {
+  display: none;
+}
+
 /* --- Scroll Reveal Animation --- */
 .reveal {
   opacity: 0;
@@ -1238,6 +1327,15 @@ ul, ol {
 
   .case-block {
     padding: 28px 24px;
+  }
+
+  .case-quote {
+    padding: 28px 24px;
+    margin-top: 32px;
+  }
+
+  .case-quote-text {
+    font-size: 0.95rem;
   }
 }
 

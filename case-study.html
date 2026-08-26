@@ -121,6 +121,15 @@
         </div>
       </div>
 
+      <!-- CLIENT QUOTE (zobrazi se jen u studii, ktere maji `quote`) -->
+      <figure class="case-quote reveal" id="caseQuote" hidden>
+        <blockquote class="case-quote-text" id="caseQuoteText"></blockquote>
+        <figcaption class="case-quote-footer">
+          <img class="case-quote-logo" id="caseQuoteLogo" src="" alt="" hidden>
+          <span class="case-quote-author" id="caseQuoteAuthor"></span>
+        </figcaption>
+      </figure>
+
       <!-- CTA -->
       <div class="cta-banner reveal" style="margin-top: 64px;">
         <h2 class="cta-banner-title">Máte podobný problém?</h2>
@@ -256,6 +265,47 @@
             { value: '0', label: 'Ručně přepisovaných cen, odkazů a obrázků' }
           ]
         }
+      },
+      wavyboats: {
+        tag: 'B2B e-commerce',
+        title: 'Dealerská zóna na Shoptetu: doporučené ceny, hlídaná expedice a dohledatelné staré kódy',
+        date: '2026',
+        client: 'Wavy Boats — distributor lodních motorů Mercury',
+        duration: '7 dní (10 h čisté práce)',
+        problem: {
+          title: 'Standardní e-shop na B2B provoz nestačil',
+          text: `<p>Klient provozuje dealerskou zónu pro prodejce lodních motorů na Shoptetu — katalog přes 43 000 položek, z velké části náhradní díly. Platforma pokrývala běžný e-shop, ale tři konkrétní B2B situace na ní řešení neměly a každá z nich končila telefonátem.</p>
+          <ul>
+            <li><strong>Dealer neviděl, na čem vydělá:</strong> V dealerské zóně vidí prodejce svoji nákupní cenu, doporučenou koncovou ale nikde. Marži si musel dohledávat mimo e-shop.</li>
+            <li><strong>Míchané objednávky dělaly zmatek ve skladu:</strong> Když objednávka kombinovala skladové a neskladové zboží, nebylo z ní poznat, jestli zákazník chce poslat hned to, co je k dispozici, nebo počkat na kompletaci.</li>
+            <li><strong>Výrobce přečísloval díly:</strong> Mercury plošně mění kódování náhradních dílů. Zákazník má v ruce starý kód z dokumentace, v e-shopu je nový — a produkt nedohledá.</li>
+          </ul>`
+        },
+        solution: {
+          title: 'Tři úpravy na frontendu místo vlastního backendu',
+          text: `<p>Žádná z těch tří věcí nevyžadovala vlastní systém. Šlo o to doplnit Shoptetu logiku tam, kde ji nemá — a hlavně vyřešit, odkud brát data, aby zobrazení nezdržovalo načtení stránky a nedostalo do prohlížeče nic, co tam nepatří.</p>
+          <ul>
+            <li><strong>Doporučené ceny na detailu i v košíku:</strong> Dealer vidí u produktu doporučenou koncovou cenu a v košíku součet za celou objednávku. Zobrazí se jen tomu, kdo má cenu skutečně nižší — nepřihlášený návštěvník nevidí nic navíc.</li>
+            <li><strong>Hlídaná expedice:</strong> Pokud košík obsahuje mix skladového a neskladového zboží, objednávku nelze dokončit bez volby, jestli ji rozdělit, nebo počkat na kompletaci. Volba jde rovnou do objednávky, sklad se na nic neptá.</li>
+            <li><strong>Dohledání starých kódů:</strong> U přečíslovaného dílu se vedle aktuálního kódu zobrazí ten původní, na detailu i ve výpisu kategorie. Vyhledávání podle starého kódu pak funguje samo, bez další úpravy.</li>
+            <li><strong>Předzpracovaná data místo živého napojení:</strong> Kompletní produktový export se jednou denně zpracuje na malou veřejně bezpečnou podmnožinu — jen kódy a koncové ceny. Nákupní ceny, cenové hladiny ani skladové stavy se do prohlížeče nedostanou vůbec.</li>
+          </ul>`
+        },
+        result: {
+          title: 'Trojí ruční dohledávání zmizelo z běžného provozu',
+          text: `<p>Všechny tři úpravy jsou nasazené a běží v denním provozu. Dealer nemusí volat kvůli marži, sklad kvůli způsobu odeslání a podpora kvůli nedohledatelnému kódu — informace je pokaždé na stránce, kde ji člověk hledá.</p>
+          <p>Data se aktualizují sama každou noc. Když klient doplní další přečíslovaný díl, objeví se na detailu okamžitě a ve výpisu katalogu do druhého dne, bez zásahu z mojí strany.</p>`,
+          metrics: [
+            { value: '43 430', label: 'Položek katalogu, nad kterými řešení běží' },
+            { value: '0', label: 'Nákupních cen a skladových stavů v prohlížeči' },
+            { value: '1× denně', label: 'Automatická aktualizace dat bez ruční údržby' }
+          ]
+        },
+        quote: {
+          text: 'Na naší spolupráci nám velmi vyhovovala rychlost zpracování požadovaných úprav našeho e-shopu. Veškerá Vaše práce splnila naše očekávání a potěšilo nás, že jsme si ve všem ihned porozuměli. Projekt nám vyřešil lepší přehlednost a průběh objednávek pro naše zákazníky. V případě dalších úprav se na Vás velmi rádi obrátíme.',
+          author: 'Pavlína Pracnová, Wavy Boats',
+          logo: { src: 'wavyboats_logo.webp', alt: 'Wavy Boats' }
+        }
       }
     };
 
@@ -296,6 +346,30 @@
       document.getElementById('metric2Label').textContent = metrics[1].label;
       document.getElementById('metric3Value').textContent = metrics[2].value;
       document.getElementById('metric3Label').textContent = metrics[2].label;
+
+      // Citace klienta - nepovinna, ma ji zatim jen cast studii
+      const quoteEl = document.getElementById('caseQuote');
+      const logoEl = document.getElementById('caseQuoteLogo');
+      if (study.quote) {
+        document.getElementById('caseQuoteText').textContent = study.quote.text;
+        document.getElementById('caseQuoteAuthor').textContent = study.quote.author;
+
+        // Logo je nepovinne. Kdyby soubor chybel, onerror ho schova -
+        // radeji citace bez loga nez rozbita ikona.
+        if (study.quote.logo) {
+          logoEl.onerror = function () { logoEl.hidden = true; };
+          logoEl.src = study.quote.logo.src;
+          logoEl.alt = study.quote.logo.alt;
+          logoEl.hidden = false;
+        } else {
+          logoEl.hidden = true;
+          logoEl.removeAttribute('src');
+        }
+
+        quoteEl.hidden = false;
+      } else {
+        quoteEl.hidden = true;
+      }
     }
 
     loadCaseStudy();
