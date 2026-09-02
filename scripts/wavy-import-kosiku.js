@@ -95,6 +95,17 @@
      bunky by nesepnul. Prazdne radky se proto PRESKAKUJI podle
      hodnoty a NEUKONCUJI cteni - data nemusi byt souvisla.
 
+   ============================================================
+   POZOR NA SABLONU
+   ------------------------------------------------------------
+   Sablona schovava nativni formularove prvky a kresli si vlastni
+   pres strukturu svych labelu. Overeno na radiu: dostane
+   position:absolute; width:1px; height:1px; appearance:none.
+   Cokoli formularoveho, co se sem prida, proto MUSI mit vlastni
+   reset uvnitr modalu (viz pravidlo pro input[type=radio] ve
+   vlozStyl) - jinak je prvek fakticky neviditelny a uzivatel
+   nepozna, co je zvolene.
+
    Vlozeni: Vzhled a obsah -> Editor -> HTML kody -> paticka
    ============================================================ */
 
@@ -491,6 +502,12 @@
       '.wb-imp-drop.hover{border-color:#0a7;background:#f3fffb}',
       '.wb-imp-vol{margin-top:14px;padding:12px;background:#f6f7f9;border-radius:6px;font-size:13px}',
       '.wb-imp-vol label{display:flex;gap:8px;align-items:flex-start;margin:6px 0;cursor:pointer}',
+      // Sablona Shoptetu schovava nativni radio (position:absolute;
+      // width:1px;height:1px;appearance:none) a kresli si vlastni pres
+      // strukturu labelu, kterou tady nemame - bez tohoto resetu neni
+      // videt zadne kolecko a dealer nepozna, co je zvolene.
+      '#' + MODAL_ID + ' input[type="radio"]{appearance:auto;-webkit-appearance:radio;',
+      'position:static;width:16px;height:16px;min-width:16px;margin:2px 0 0;opacity:1;flex-shrink:0}',
       '.wb-imp-tab{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}',
       '.wb-imp-tab th,.wb-imp-tab td{border-bottom:1px solid #e8e8e8;padding:5px 7px;text-align:left}',
       '.wb-imp-tab th{background:#f2f4f6}',
