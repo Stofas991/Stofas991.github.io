@@ -151,11 +151,17 @@
     SOUBEZNE_PO_CHYBACH: 1,   // na co spadnout, kdyz zacnou padat odpovedi
     CHYB_NEZ_ZPOMALIM: 3,     // kolik chyb v jedne davce spusti zpomaleni
 
-    // Od jake doby behu se vubec ukaze prubehova obrazovka. Pod touto
-    // hranici by jen blikla. Pri 15 polozkach (realny objem podle
-    // klienta) je hotovo drive, takze uzivatel jde z nahledu rovnou
-    // na vysledek.
-    PRUBEH_OD_MS: 600,
+    // Od jake doby behu se ukaze samostatna prubehova obrazovka.
+    //
+    // Zmereno: 15 polozek (realny objem podle klienta) trva ~1,5 s. Pri
+    // hranici 600 ms se obrazovka objevila, ale jen na 900 ms - to pusobi
+    // jako zavada. Hranice je proto nad tim: kratky beh zustane na nahledu
+    // a uzivatel jde rovnou na vysledek.
+    //
+    // Okamzitou zpetnou vazbu mezitim dava sam potvrzovaci button, ktery
+    // se pri kliknuti zablokuje a prepise na "Vkladam...". Bez toho by
+    // uzivatel po kliknuti 2 s nevidel vubec nic.
+    PRUBEH_OD_MS: 2000,
     VYPRAZDNIT_PRED: false,   // vychozi volba v UI, viz bod 6
 
     /* ---------- endpointy (ze shoptet.config, s fallbackem) ---------- */
@@ -847,6 +853,13 @@
 
     btn.onclick = function () {
       stav.rezim = rezim();
+      // Okamzita zpetna vazba - u kratkych behu je to jedina, kterou
+      // uzivatel uvidi, protoze prubehova obrazovka uz nenaskoci.
+      btn.disabled = true;
+      btn.textContent = (stav.rezim === 'zkontrolovat') ? 'Kontroluji…' : 'Vkládám…';
+      var zpet = document.getElementById('wb-imp-back');
+      if (zpet) zpet.disabled = true;
+
       if (stav.rezim === 'zkontrolovat') krokKontrolniBeh();
       else krokVkladani();
     };
