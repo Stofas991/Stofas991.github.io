@@ -1,2 +1,12 @@
 __pycache__/
 *.pyc
+
+# Testovaci objednavkove tabulky pro wavy-import-kosiku.js.
+# Jsou to vygenerovana data, ne zdroj - pregenerujes je kdykoli:
+#   python scripts/vyrob-testovaci-tabulku.py
+# Zamerne netrackovane, at v repu neni binarka, kterou umi vyrobit skript.
+scripts/test-*.xls
+
+# Realny vzorek od klienta - obsahuje jejich objednavkova data,
+# do verejneho repa nepatri.
+scripts/prtorder.xls
