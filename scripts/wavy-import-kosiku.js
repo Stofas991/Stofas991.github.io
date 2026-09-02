@@ -326,6 +326,63 @@
 
   /* ================= KOSIK ================= */
 
+  // Vytahne z odpovedi jen `code` a zbytek tela zahodi.
+  //
+  // Proc: addCartItem vraci v payloadu CELY kosik. Zmereno na dealerwb.cz -
+  // odpoved roste o ~1 kB na kazdou polozku, ktera uz v kosiku je:
+  //     0 polozek ->  1,9 kB      39 polozek -> 43 kB
+  //    19 polozek -> 22 kB        59 polozek -> 64 kB
+  // U 300polozkove tabulky se tim za cely beh prenese kvadraticky, radove
+  // desitky MB, prestoze nas zajima jedno cislo na zacatku JSONu.
+  //
+  // Zmereno (zaklad 150 polozek, 40 pridani po 8 soubezne):
+  //    cele telo:  74 ms/polozka, 7 185 kB
+  //    useknute:   68 ms/polozka, 3 499 kB
+  // Casove je to jen ~7 % - na rychle lince se to neprojevi. Objem dat to
+  // ale puli, a to je rozdil pro dealera na pomale nebo merene lince.
+  // Neprodavej to jako zrychleni, je to uspora dat.
+  //
+  // Kdyz se `code` v prvnich kusech streamu nenajde, docte se telo cele -
+  // korektnost ma prednost pred usporou.
+  function prectiKod(r) {
+    if (!r.body || !r.body.getReader) {
+      return r.text().then(function (t) {
+        var j = null; try { j = JSON.parse(t); } catch (e) { /* ignore */ }
+        return j ? j.code : 0;
+      });
+    }
+
+    var reader = r.body.getReader();
+    var dec = new TextDecoder();
+    var txt = '';
+
+    function dalsi(kolo) {
+      return reader.read().then(function (c) {
+        if (c.value) txt += dec.decode(c.value, { stream: true });
+        var m = txt.match(/"code"\s*:\s*(\d+)/);
+        if (m) {
+          try { reader.cancel(); } catch (e) { /* ignore */ }
+          return parseInt(m[1], 10);
+        }
+        if (c.done) {
+          var j = null; try { j = JSON.parse(txt); } catch (e) { /* ignore */ }
+          return j ? j.code : 0;
+        }
+        if (kolo >= 4) {
+          // Neobvykle poradi klicu - docteme radeji vse.
+          return reader.read().then(function dalsiVse(cc) {
+            if (cc.value) txt += dec.decode(cc.value, { stream: true });
+            if (!cc.done) return reader.read().then(dalsiVse);
+            var jj = null; try { jj = JSON.parse(txt); } catch (e) { /* ignore */ }
+            return jj ? jj.code : 0;
+          });
+        }
+        return dalsi(kolo + 1);
+      });
+    }
+    return dalsi(0);
+  }
+
   function vlozPolozku(kod, qty) {
     var data = { language: 'cs', productCode: kod, amount: String(qty) };
     var csrf = csrfPole();
@@ -340,10 +397,8 @@
       },
       body: telo(data)
     }).then(function (r) {
-      return r.text().then(function (t) {
-        var j = null;
-        try { j = JSON.parse(t); } catch (e) { /* neocekavana odpoved */ }
-        return { kod: kod, qty: qty, code: j ? j.code : 0 };
+      return prectiKod(r).then(function (code) {
+        return { kod: kod, qty: qty, code: code };
       });
     }).catch(function (e) {
       return { kod: kod, qty: qty, code: 0, sit: e.message };
@@ -379,13 +434,23 @@
     });
   }
 
+  // onProgress dostava (smazano, celkem). Celkem se zjisti z prvniho
+  // pruchodu a dal se nemeni, aby ukazatel neposkakoval - jinak by
+  // "zbyva 40" po kazdem kole klesalo a pruh by se nikam neposouval.
   function vyprazdniKosik(onProgress) {
     var kolo = 0;
+    var celkem = null;
+    var smazano = 0;
+
     function dalsi() {
       if (kolo++ > 15) return Promise.resolve(false);
       return stavKosiku().then(function (s) {
-        if (!s.itemIds.length) return true;
-        if (onProgress) onProgress(s.itemIds.length);
+        if (celkem === null) celkem = s.itemIds.length;
+        if (!s.itemIds.length) {
+          if (onProgress && celkem) onProgress(celkem, celkem);
+          return true;
+        }
+
         var davky = [];
         for (var i = 0; i < s.itemIds.length; i += CONFIG.SOUBEZNE) {
           davky.push(s.itemIds.slice(i, i + CONFIG.SOUBEZNE));
@@ -401,7 +466,10 @@
                 },
                 body: telo({ itemId: id })
               }).catch(function () { /* jednotliva chyba nesmi zabit uklid */ });
-            }));
+            })).then(function () {
+              smazano += davka.length;
+              if (onProgress) onProgress(Math.min(smazano, celkem), celkem);
+            });
           });
         }, Promise.resolve()).then(dalsi);
       });
@@ -565,18 +633,25 @@
     if (document.getElementById(CSS_ID)) return;
     var s = document.createElement('style');
     s.id = CSS_ID;
+    // Vzhled se vaze na promenne sablony, ne na vlastni paletu - kdyz
+    // klient zmeni barvy v administraci, dialog se zmeni s nim.
+    // Overeno na dealerwb.cz: --color-primary #000, hover #ff0000,
+    // --template-font "Exo 2", tlacitka hranata a verzalkami, text #4d4d4d.
+    // Fallbacky jsou pro pripad, ze by sablona promenne nemela.
     s.textContent = [
+      '#' + MODAL_ID + ',.wb-imp-btn{font-family:var(--template-font,inherit)}',
       '.wb-imp-btn{display:inline-flex;align-items:center;gap:8px;margin:12px 0;cursor:pointer}',
-      '#' + MODAL_ID + '{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}',
-      '.wb-imp-box{background:#fff;color:#111;width:min(760px,94vw);max-height:90vh;display:flex;flex-direction:column;border-radius:8px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.4)}',
-      '.wb-imp-hd{padding:14px 18px;background:#0a2540;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}',
-      '.wb-imp-hd h3{margin:0;font-size:16px}',
-      '.wb-imp-x{background:none;border:0;color:#fff;font-size:22px;cursor:pointer;line-height:1}',
+      '#' + MODAL_ID + '{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}',
+      '.wb-imp-box{background:#fff;color:#4d4d4d;width:min(760px,94vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.45)}',
+      '.wb-imp-hd{padding:14px 18px;background:var(--color-header-background,#000);color:#fff;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}',
+      '.wb-imp-hd h3{margin:0;font-size:15px;text-transform:uppercase;font-weight:400;letter-spacing:.03em;color:#fff}',
+      '.wb-imp-x{background:none;border:0;color:#fff;font-size:24px;cursor:pointer;line-height:1;padding:0 4px}',
+      '.wb-imp-x:hover{color:var(--color-primary-hover,#ff0000)}',
       '.wb-imp-bd{padding:18px;overflow:auto;flex:1;font-size:14px;line-height:1.55}',
       '.wb-imp-ft{padding:12px 18px;border-top:1px solid #e0e0e0;display:flex;gap:10px;justify-content:flex-end;flex-shrink:0;flex-wrap:wrap}',
-      '.wb-imp-drop{border:2px dashed #b0b8c0;border-radius:6px;padding:24px;text-align:center;cursor:pointer}',
-      '.wb-imp-drop.hover{border-color:#0a7;background:#f3fffb}',
-      '.wb-imp-vol{margin-top:14px;padding:12px;background:#f6f7f9;border-radius:6px;font-size:13px}',
+      '.wb-imp-drop{border:2px dashed #c0c0c0;padding:26px;text-align:center;cursor:pointer}',
+      '.wb-imp-drop:hover,.wb-imp-drop.hover{border-color:var(--color-primary,#000);background:#fafafa}',
+      '.wb-imp-vol{margin-top:14px;padding:12px;background:#f5f5f5;font-size:13px}',
       '.wb-imp-vol label{display:flex;gap:8px;align-items:flex-start;margin:6px 0;cursor:pointer}',
       // Sablona Shoptetu schovava nativni radio (position:absolute;
       // width:1px;height:1px;appearance:none) a kresli si vlastni pres
@@ -586,12 +661,13 @@
       'position:static;width:16px;height:16px;min-width:16px;margin:2px 0 0;opacity:1;flex-shrink:0}',
       '.wb-imp-tab{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}',
       '.wb-imp-tab th,.wb-imp-tab td{border-bottom:1px solid #e8e8e8;padding:5px 7px;text-align:left}',
-      '.wb-imp-tab th{background:#f2f4f6}',
+      '.wb-imp-tab th{background:#f5f5f5;text-transform:uppercase;font-weight:400;letter-spacing:.03em;color:#000}',
       '.wb-imp-sum{display:flex;gap:16px;flex-wrap:wrap;margin:4px 0 12px;font-weight:600}',
-      '.wb-imp-ok{color:#0a7a3a}.wb-imp-err{color:#b3261e}.wb-imp-warn{color:#9a5b00}',
-      '.wb-imp-bar{height:8px;background:#e8e8e8;border-radius:4px;overflow:hidden;margin:10px 0}',
-      '.wb-imp-bar>div{height:100%;background:#0a7;width:0;transition:width .2s}',
-      '.wb-imp-note{font-size:12px;color:#666;margin-top:10px}'
+      '.wb-imp-ok{color:#0a7a3a}.wb-imp-err{color:var(--color-primary-hover,#c00)}.wb-imp-warn{color:#9a5b00}',
+      '.wb-imp-bar{height:8px;background:#e8e8e8;overflow:hidden;margin:10px 0}',
+      '.wb-imp-bar>div{height:100%;background:var(--color-primary,#000);width:0;transition:width .2s}',
+      '.wb-imp-note{font-size:12px;color:#777;margin-top:10px}',
+      '.wb-imp-bd b,.wb-imp-bd strong{color:#000}'
     ].join('');
     document.head.appendChild(s);
   }
@@ -881,8 +957,14 @@
     }
 
     var pred = stav.rezim === 'vyprazdnit'
-      ? (stat.textContent = 'Vyprazdňuji košík…', vyprazdniKosik(function (n) {
-          stat.innerHTML = 'Vyprazdňuji košík… zbývá <b>' + n + '</b>';
+      ? (stat.textContent = 'Vyprazdňuji košík…', vyprazdniKosik(function (smazano, celkem) {
+          stat.innerHTML = 'Vyprazdňuji košík — <b>' + smazano + '</b> z <b>' + celkem + '</b>';
+          fill.style.width = celkem ? Math.round(smazano / celkem * 100) + '%' : '0%';
+        }).then(function (ok) {
+          // Pruh vynulovat, at vkladani zacina od nuly a nepokracuje
+          // z pozice, kterou nechalo mazani.
+          fill.style.width = '0%';
+          return ok;
         }))
       : Promise.resolve(true);
 
