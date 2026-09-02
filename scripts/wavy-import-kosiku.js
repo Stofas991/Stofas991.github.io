@@ -137,7 +137,17 @@
     SHEETJS_URL: 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
 
     /* ---------- vkladani ---------- */
-    SOUBEZNE: 8,              // overene optimum, viz bod 7 v hlavicce
+    // Souberne 4, ne 8. Duvod je v REALNEM OBJEMU, ne v technickem limitu:
+    // klient (mail Pracnove, zari 2026) uvadi, ze dealeri posilaji tabulky
+    // o par polozkach, "nekdy i s patnacti". Pri patnacti polozkach je
+    // rozdil mezi 4 a 8 souberne asi pul sekundy - neznatelny. Ctyrka
+    // pritom pulí spickovou zatez sdileneho hostingu, na kterem shop bezi.
+    //
+    // Osmicka je overene optimum pro velke tabulky (viz bod 7 v hlavicce)
+    // a da se sem vratit, kdyby dealeri zacali posilat stovky polozek -
+    // coz se muze stat prave tim, ze tahle funkce vznikne: dnes objednavaji
+    // mailem, a mailem nikdo neposle 300radkovou tabulku.
+    SOUBEZNE: 4,
     SOUBEZNE_PO_CHYBACH: 1,   // na co spadnout, kdyz zacnou padat odpovedi
     CHYB_NEZ_ZPOMALIM: 3,     // kolik chyb v jedne davce spusti zpomaleni
     VYPRAZDNIT_PRED: false,   // vychozi volba v UI, viz bod 6
