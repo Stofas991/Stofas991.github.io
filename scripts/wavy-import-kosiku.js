@@ -185,6 +185,24 @@
     URL_HLEDAT: '/vyhledavani/?string=',
     SOUBEZNE_KONTROLA: 8,
 
+    /* ---------- stare (nahrazene) kody ---------- */
+    // Dealeri maji v tabulkach kody z rozkresu, ktere vyrobce mezitim
+    // prečísloval - Shoptet takovy kod nezna a vlozeni selze. Klient
+    // ale puvodni kody vyplnuje do popisnych parametru a denni generator
+    // je publikuje do kody.json jako {aktualni: puvodni}. Obraceni
+    // {puvodni: aktualni} tedy dava presne to, co tu potrebujeme.
+    //
+    // POZOR NA PORADI: nejdriv se VZDY zkusi kod tak, jak je v tabulce,
+    // a mapa se pouzije teprve kdyz Shoptet vrati 500. Duvod: overeno,
+    // ze 4 ze 44 puvodnich kodu jsou ZAROVEN platne kody jinych produktu
+    // (napr. 865448A01 je puvodni kod k 8M0188327 i samostatny produkt).
+    // Kdyby se mapa uplatnila prednostne, vlozil by se u nich cizi dil.
+    //
+    // Soubor je maly (~1 kB) a stahuje se AZ kdyz nejaka polozka selze,
+    // takze bezchybny import zadny dotaz navic nedela.
+    URL_STARE_KODY: 'https://glos-optimalizace.cz/scripts/kody.json',
+    ZKOUSET_STARE_KODY: true,
+
     DEBUG: false
   };
 
@@ -499,6 +517,73 @@
     return dalsi();
   }
 
+  /* ================= STARE (NAHRAZENE) KODY ================= */
+
+  // Mapa {puvodni_kod: aktualni_kod}, memoizovana. Vraci {} kdyz se
+  // soubor nepodari nacist - stary kod se pak jen nedohleda, coz je
+  // stejny vysledek jako dnes, ne chyba.
+  var stareKodyPromise = null;
+  function zajistiStareKody() {
+    if (!CONFIG.ZKOUSET_STARE_KODY) return Promise.resolve({});
+    if (stareKodyPromise) return stareKodyPromise;
+
+    stareKodyPromise = fetch(CONFIG.URL_STARE_KODY, { credentials: 'omit' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var obraceno = {};
+        Object.keys(data || {}).forEach(function (aktualni) {
+          var puvodni = String(data[aktualni] || '').trim();
+          // Pri kolizi (jeden puvodni kod na vic aktualnich) radeji
+          // nemapovat vubec, nez hadat. Overeno, ze dnes zadna neni.
+          if (!puvodni) return;
+          if (obraceno[puvodni] && obraceno[puvodni] !== aktualni) {
+            obraceno[puvodni] = null;
+          } else if (!(puvodni in obraceno)) {
+            obraceno[puvodni] = aktualni;
+          }
+        });
+        return obraceno;
+      })
+      .catch(function (e) {
+        log('kody.json se nepodarilo nacist', e && e.message);
+        return {};
+      });
+
+    return stareKodyPromise;
+  }
+
+  // Zkusi znovu vlozit polozky, ktere selhaly, pod aktualnim kodem.
+  // Vraci seznam uspesnych substituci [{polozka, novyKod}].
+  function dohledejStareKody(nepodarene) {
+    if (!nepodarene.length) return Promise.resolve([]);
+
+    return zajistiStareKody().then(function (mapa) {
+      var kandidati = nepodarene.filter(function (p) { return mapa[p.kod]; });
+      if (!kandidati.length) return [];
+
+      var out = [];
+      var i = 0;
+      function davka() {
+        if (i >= kandidati.length) return Promise.resolve(out);
+        var cast = kandidati.slice(i, i + CONFIG.SOUBEZNE);
+        i += cast.length;
+        return Promise.all(cast.map(function (p) {
+          var novy = mapa[p.kod];
+          return vlozPolozku(novy, p.qty).then(function (v) {
+            if (v.code === 200) {
+              p.vlozenoJako = novy;      // aby vyhodnot() hledal v kosiku spravne
+              out.push({ polozka: p, novyKod: novy });
+            }
+          });
+        })).then(davka);
+      }
+      return davka();
+    });
+  }
+
   /* ================= KONTROLNI REZIM (jen cteni) ================= */
 
   // Overi jeden kod pres vyhledavani. Bere se JEN PRESNA shoda SKU -
@@ -597,7 +682,11 @@
 
     polozky.forEach(function (p) {
       var v = podleKodu[p.kod];
-      var vKosiku = kosik.mnozstvi ? kosik.mnozstvi[p.kod] : undefined;
+      // Kdyz se polozka vlozila pod aktualnim kodem misto stareho z
+      // tabulky, v kosiku lezi pod tim novym - hledat musime tam.
+      var kodVKosiku = p.vlozenoJako || p.kod;
+      var vKosiku = kosik.mnozstvi ? kosik.mnozstvi[kodVKosiku] : undefined;
+      if (p.vlozenoJako) v = { kod: p.kod, code: 200 };
 
       if (v && v.code !== 200) {
         out.nenalezeno.push({ polozka: p, sit: v.sit });
@@ -626,7 +715,9 @@
         vKosiku === undefined ? '' : vKosiku, z.polozka.radky.join('+')]
         .map(function (x) { return String(x === undefined ? '' : x).replace(/;/g, ','); }).join(';'));
     }
-    prehled.vlozeno.forEach(function (z) { pridej('vlozeno', z, z.vKosiku); });
+    prehled.vlozeno.forEach(function (z) {
+      pridej(z.polozka.vlozenoJako ? ('vlozeno jako ' + z.polozka.vlozenoJako) : 'vlozeno', z, z.vKosiku);
+    });
     prehled.nenalezeno.forEach(function (z) { pridej('NENALEZENO', z, 0); });
     prehled.neshoda.forEach(function (z) { pridej('NESHODA', z, z.vKosiku); });
     prehled.neovereno.forEach(function (z) { pridej('NEOVERENO', z, ''); });
@@ -1018,14 +1109,33 @@
     pred
       .then(function () { return vlozVse(pol, pokrok); })
       .then(function (vysledky) {
+        // Nepodarene kody muzou byt stare (vyrobce je precisloval).
+        // Zkusime je dohledat pres kody.json - jen kdyz je co dohledavat.
+        var nepodarene = vysledky
+          .filter(function (v) { return v.code !== 200; })
+          .map(function (v) {
+            return pol.filter(function (p) { return p.kod === v.kod; })[0];
+          })
+          .filter(Boolean);
+
+        if (!nepodarene.length) return { vysledky: vysledky, nahrazeno: [] };
+
+        if (ukazanProbeh) stat.innerHTML = 'Dohledávám nahrazené kódy…';
+        return dohledejStareKody(nepodarene).then(function (nahrazeno) {
+          return { vysledky: vysledky, nahrazeno: nahrazeno };
+        });
+      })
+      .then(function (o) {
         if (ukazanProbeh) stat.innerHTML = 'Kontroluji obsah košíku…';
         return stavKosiku().then(function (kosik) {
-          return { vysledky: vysledky, kosik: kosik };
+          return { vysledky: o.vysledky, nahrazeno: o.nahrazeno, kosik: kosik };
         });
       })
       .then(function (o) {
         clearTimeout(casovac);
-        krokPrehled(vyhodnot(pol, o.vysledky, o.kosik), o.kosik);
+        var prehled = vyhodnot(pol, o.vysledky, o.kosik);
+        prehled.nahrazeno = o.nahrazeno || [];
+        krokPrehled(prehled, o.kosik);
       })
       .catch(function (e) {
         clearTimeout(casovac);
@@ -1041,8 +1151,11 @@
   /* ---------- krok 4: prehled ---------- */
 
   function krokPrehled(prehled, kosik) {
+    // Nahrazene kody nejsou chyba, ale dealer o nich MUSI vedet - v kosiku
+    // je jiny kod, nez mel v tabulce. Zkraceny vysledek se proto pouzije
+    // jen kdyz zadna substituce nebyla.
     var vseVPoradku = !prehled.nenalezeno.length && !prehled.neshoda.length
-      && !prehled.neovereno.length;
+      && !prehled.neovereno.length && !(prehled.nahrazeno && prehled.nahrazeno.length);
 
     // Kdyz je vsechno v poradku, neni co hlasit - plna tabulka polozek,
     // ktere presne odpovidaji tomu, co uzivatel prave videl v nahledu,
@@ -1096,6 +1209,12 @@
     var bZnovu = document.getElementById('wb-imp-znovu');
     if (bZnovu) bZnovu.onclick = function () {
       stav.polozky = prehled.nenalezeno.concat(prehled.neshoda).map(function (z) { return z.polozka; });
+      // POZOR: rezim se MUSI prepnout na 'pridat'. V rezimu 'vyprazdnit'
+      // by opakovani vyprazdnilo kosik ZNOVU a smazalo tim i polozky,
+      // ktere se prvnim behem uspesne vlozily - v kosiku by zustalo jen
+      // to, co se opakuje. Vyprazdneni je jednorazovy krok, ktery uz
+      // probehl.
+      stav.rezim = 'pridat';
       krokVkladani();
     };
   }
@@ -1106,7 +1225,22 @@
       + (prehled.nenalezeno.length ? '<span class="wb-imp-err">✗ nenalezeno: ' + prehled.nenalezeno.length + '</span>' : '')
       + (prehled.neshoda.length ? '<span class="wb-imp-warn">≠ neshoda: ' + prehled.neshoda.length + '</span>' : '')
       + (prehled.neovereno.length ? '<span class="wb-imp-warn">? neověřeno: ' + prehled.neovereno.length + '</span>' : '')
+      + ((prehled.nahrazeno && prehled.nahrazeno.length)
+          ? '<span class="wb-imp-warn">↻ nahrazeno: ' + prehled.nahrazeno.length + '</span>' : '')
       + '</div>';
+
+    if (prehled.nahrazeno && prehled.nahrazeno.length) {
+      html += '<div style="margin-top:10px"><b class="wb-imp-warn">Tyto kódy výrobce nahradil novějšími</b>'
+        + '<div class="wb-imp-note">Kód z vaší tabulky se v katalogu nenašel, ale je u něj vedený '
+        + 'jako původní kód novějšího dílu — do košíku je vložený ten novější. '
+        + 'Zkontrolujte prosím, že jde o díl, který jste chtěli.</div>'
+        + '<table class="wb-imp-tab"><thead><tr><th>Kód v tabulce</th><th>Vloženo jako</th><th>Ks</th></tr></thead><tbody>';
+      prehled.nahrazeno.forEach(function (z) {
+        html += '<tr><td>' + z.polozka.kod + '</td><td><b>' + z.novyKod + '</b></td>'
+          + '<td>' + z.polozka.qty + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
 
     if (prehled.nenalezeno.length) {
       html += '<div style="margin-top:10px"><b class="wb-imp-err">Tyto kódy se v katalogu nenašly</b>'
