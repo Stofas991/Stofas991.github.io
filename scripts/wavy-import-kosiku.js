@@ -150,6 +150,12 @@
     SOUBEZNE: 4,
     SOUBEZNE_PO_CHYBACH: 1,   // na co spadnout, kdyz zacnou padat odpovedi
     CHYB_NEZ_ZPOMALIM: 3,     // kolik chyb v jedne davce spusti zpomaleni
+
+    // Od jake doby behu se vubec ukaze prubehova obrazovka. Pod touto
+    // hranici by jen blikla. Pri 15 polozkach (realny objem podle
+    // klienta) je hotovo drive, takze uzivatel jde z nahledu rovnou
+    // na vysledek.
+    PRUBEH_OD_MS: 600,
     VYPRAZDNIT_PRED: false,   // vychozi volba v UI, viz bod 6
 
     /* ---------- endpointy (ze shoptet.config, s fallbackem) ---------- */
@@ -717,17 +723,6 @@
       +   '<div style="font-weight:600;margin-bottom:6px">Přetáhněte sem tabulku nebo klikněte</div>'
       +   '<div style="font-size:12px;color:#666">.xls, .xlsx nebo .csv &middot; soubor zůstává ve vašem počítači</div>'
       +   '<input type="file" id="wb-imp-file" accept=".xls,.xlsx,.csv" style="display:none">'
-      + '</div>'
-      + '<div class="wb-imp-vol">'
-      +   '<div style="font-weight:600;margin-bottom:6px">Co s položkami, které už v košíku jsou</div>'
-      +   '<label><input type="radio" name="wb-imp-mode" value="pridat"' + (CONFIG.VYPRAZDNIT_PRED ? '' : ' checked') + '>'
-      +     '<span><b>Přidat k obsahu košíku</b> — u shodných kódů se množství sečte (výchozí chování e-shopu).</span></label>'
-      +   '<label><input type="radio" name="wb-imp-mode" value="vyprazdnit"' + (CONFIG.VYPRAZDNIT_PRED ? ' checked' : '') + '>'
-      +     '<span><b>Nejdřív košík vyprázdnit</b> — v košíku zůstane jen to, co je v tabulce.</span></label>'
-      +   '<label style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e5e8">'
-      +     '<input type="radio" name="wb-imp-mode" value="zkontrolovat">'
-      +     '<span><b>Jen zkontrolovat soubor</b> — nic se do košíku nevloží. Ukáže, které kódy '
-      +     'v katalogu jsou, a kolik je skladem. U delších tabulek to trvá déle.</span></label>'
       + '</div>',
       '<button class="btn btn-conversion" id="wb-imp-zrus" type="button">Zrušit</button>'
     );
@@ -748,13 +743,14 @@
     m.querySelector('#wb-imp-zrus').onclick = zavri;
   }
 
+  // Rezim se cte az na druhe obrazovce - volba "co s obsahem kosiku"
+  // ma smysl teprve ve chvili, kdy uzivatel vidi, co v souboru je.
   function rezim() {
     var el = document.querySelector('input[name="wb-imp-mode"]:checked');
-    return el ? el.value : 'pridat';
+    return el ? el.value : (CONFIG.VYPRAZDNIT_PRED ? 'vyprazdnit' : 'pridat');
   }
 
   function nactiSoubor(f) {
-    var zvolenyRezim = rezim();
     modal('<div>Načítám <b>' + f.name + '</b>…</div>');
 
     zajistiSheetJS()
@@ -765,8 +761,7 @@
         stav = {
           nazevSouboru: f.name,
           parsed: p,
-          polozky: agreguj(p.radky),
-          rezim: zvolenyRezim
+          polozky: agreguj(p.radky)
         };
         krokKontrola();
       })
@@ -821,26 +816,40 @@
     html += '</tbody></table>';
     if (pol.length > 200) html += '<div class="wb-imp-note">Zobrazeno prvních 200 z ' + pol.length + '.</div>';
 
-    if (stav.rezim === 'zkontrolovat') {
-      html += '<div class="wb-imp-note"><b>Kontrolní režim</b> — do košíku se nic nevloží. '
-        + 'Odhadovaná doba: ' + Math.max(1, Math.round(pol.length * 0.25)) + ' s.</div>';
-    } else {
-      html += '<div class="wb-imp-note">'
-        + (stav.rezim === 'vyprazdnit'
-            ? 'Košík bude před vložením vyprázdněn.'
-            : 'Položky se přidají k obsahu košíku.')
-        + ' Odhadovaná doba vkládání: ' + Math.max(1, Math.round(pol.length * 0.09)) + '–'
-        + Math.max(2, Math.round(pol.length * 0.15)) + ' s.</div>';
-    }
+    // Volba rezimu je tady, ne na prvni obrazovce - az ted uzivatel vi,
+    // co v souboru je, a muze se rozhodnout.
+    html += '<div class="wb-imp-vol">'
+      + '<label><input type="radio" name="wb-imp-mode" value="pridat"' + (CONFIG.VYPRAZDNIT_PRED ? '' : ' checked') + '>'
+      +   '<span><b>Přidat k obsahu košíku</b> — u shodných kódů se množství sečte.</span></label>'
+      + '<label><input type="radio" name="wb-imp-mode" value="vyprazdnit"' + (CONFIG.VYPRAZDNIT_PRED ? ' checked' : '') + '>'
+      +   '<span><b>Nejdřív košík vyprázdnit</b> — zůstane jen to, co je v tabulce.</span></label>'
+      + '<label style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e5e8">'
+      +   '<input type="radio" name="wb-imp-mode" value="zkontrolovat">'
+      +   '<span><b>Jen zkontrolovat</b> — nic se nevloží, ukáže dostupnost. Trvá to déle.</span></label>'
+      + '</div>';
 
     modal(html,
         '<button class="btn" id="wb-imp-back" type="button">Jiný soubor</button>'
-      + '<button class="btn btn-conversion" id="wb-imp-go" type="button">'
-      + (stav.rezim === 'zkontrolovat' ? 'Zkontrolovat' : 'Vložit do košíku') + '</button>');
+      + '<button class="btn btn-conversion" id="wb-imp-go" type="button">Vložit do košíku</button>');
 
-    document.getElementById('wb-imp-back').onclick = krokVyber;
-    document.getElementById('wb-imp-go').onclick = (stav.rezim === 'zkontrolovat')
-      ? krokKontrolniBeh : krokVkladani;
+    var go = document.getElementById('wb-imp-back');
+    if (go) go.onclick = krokVyber;
+
+    // Popisek tlacitka sleduje zvolenou moznost
+    var btn = document.getElementById('wb-imp-go');
+    function prepisTlacitko() {
+      btn.textContent = (rezim() === 'zkontrolovat') ? 'Zkontrolovat' : 'Vložit do košíku';
+    }
+    [].slice.call(document.querySelectorAll('input[name="wb-imp-mode"]')).forEach(function (r) {
+      r.addEventListener('change', prepisTlacitko);
+    });
+    prepisTlacitko();
+
+    btn.onclick = function () {
+      stav.rezim = rezim();
+      if (stav.rezim === 'zkontrolovat') krokKontrolniBeh();
+      else krokVkladani();
+    };
   }
 
   /* ---------- krok 3b: kontrolni beh (nic nevklada) ---------- */
@@ -952,14 +961,28 @@
 
   function krokVkladani() {
     var pol = stav.polozky;
-    modal('<div id="wb-imp-stat">Připravuji…</div>'
-      + '<div class="wb-imp-bar"><div id="wb-imp-fill"></div></div>'
-      + '<div class="wb-imp-note">Nezavírejte prosím stránku, dokud import neskončí.</div>');
+    // Prubehova obrazovka se ukaze AZ kdyz beh trva dele nez PRUBEH_OD_MS.
+    // Pri patnacti polozkach je hotovo pod sekundu a obrazovka by jen
+    // blikla - to pusobi jako zavada, ne jako zpetna vazba.
+    // Modal zustava otevreny s obsahem z predchozi obrazovky, aby se
+    // dialog nezavrel a hned neotevrel.
+    var ukazanProbeh = false;
+    var stat = null, fill = null;
 
-    var stat = document.getElementById('wb-imp-stat');
-    var fill = document.getElementById('wb-imp-fill');
+    function ukazPrubeh() {
+      if (ukazanProbeh) return;
+      ukazanProbeh = true;
+      modal('<div id="wb-imp-stat">Vkládám…</div>'
+        + '<div class="wb-imp-bar"><div id="wb-imp-fill"></div></div>'
+        + '<div class="wb-imp-note">Nezavírejte prosím stránku, dokud import neskončí.</div>');
+      stat = document.getElementById('wb-imp-stat');
+      fill = document.getElementById('wb-imp-fill');
+    }
+
+    var casovac = setTimeout(ukazPrubeh, CONFIG.PRUBEH_OD_MS);
 
     function pokrok(hotovo, celkem, soubezne) {
+      if (!ukazanProbeh) return;
       stat.innerHTML = 'Vkládám <b>' + hotovo + '</b> z <b>' + celkem + '</b> položek…'
         + (soubezne === CONFIG.SOUBEZNE_PO_CHYBACH && CONFIG.SOUBEZNE > CONFIG.SOUBEZNE_PO_CHYBACH
             ? ' <span class="wb-imp-warn">(zpomaleno kvůli chybám)</span>' : '');
@@ -967,29 +990,32 @@
     }
 
     var pred = stav.rezim === 'vyprazdnit'
-      ? (stat.textContent = 'Vyprazdňuji košík…', vyprazdniKosik(function (smazano, celkem) {
+      ? vyprazdniKosik(function (smazano, celkem) {
+          if (!ukazanProbeh) return;
           stat.innerHTML = 'Vyprazdňuji košík — <b>' + smazano + '</b> z <b>' + celkem + '</b>';
           fill.style.width = celkem ? Math.round(smazano / celkem * 100) + '%' : '0%';
         }).then(function (ok) {
           // Pruh vynulovat, at vkladani zacina od nuly a nepokracuje
           // z pozice, kterou nechalo mazani.
-          fill.style.width = '0%';
+          if (ukazanProbeh) fill.style.width = '0%';
           return ok;
-        }))
+        })
       : Promise.resolve(true);
 
     pred
       .then(function () { return vlozVse(pol, pokrok); })
       .then(function (vysledky) {
-        stat.innerHTML = 'Kontroluji obsah košíku…';
+        if (ukazanProbeh) stat.innerHTML = 'Kontroluji obsah košíku…';
         return stavKosiku().then(function (kosik) {
           return { vysledky: vysledky, kosik: kosik };
         });
       })
       .then(function (o) {
+        clearTimeout(casovac);
         krokPrehled(vyhodnot(pol, o.vysledky, o.kosik), o.kosik);
       })
       .catch(function (e) {
+        clearTimeout(casovac);
         modal('<div class="wb-imp-err"><b>Import se nedokončil.</b></div>'
           + '<div style="margin-top:8px">' + String(e.message || e) + '</div>'
           + '<div class="wb-imp-note">Zkontrolujte prosím obsah košíku — část položek už v něm být může.</div>',
@@ -1002,6 +1028,66 @@
   /* ---------- krok 4: prehled ---------- */
 
   function krokPrehled(prehled, kosik) {
+    var vseVPoradku = !prehled.nenalezeno.length && !prehled.neshoda.length
+      && !prehled.neovereno.length;
+
+    // Kdyz je vsechno v poradku, neni co hlasit - plna tabulka polozek,
+    // ktere presne odpovidaji tomu, co uzivatel prave videl v nahledu,
+    // je jen obrad. Detail je za odkazem pro toho, kdo ho chce.
+    if (vseVPoradku) {
+      modal('<div style="font-size:15px;margin-bottom:6px">'
+          + '<b class="wb-imp-ok">Vloženo ' + prehled.vlozeno.length + ' položek do košíku.</b></div>'
+        + '<div class="wb-imp-note">Vše z tabulky se podařilo spárovat. '
+        + '<a href="#" id="wb-imp-detail">Zobrazit přehled</a></div>',
+          '<button class="btn" id="wb-imp-kopie" type="button">Kopírovat přehled</button>'
+        + '<button class="btn btn-conversion" id="wb-imp-hotovo" type="button">Hotovo</button>');
+
+      var odkaz = document.getElementById('wb-imp-detail');
+      if (odkaz) odkaz.onclick = function (e) {
+        e.preventDefault();
+        krokPrehledDetail(prehled, kosik);
+      };
+      pripojPrehledAkce(prehled, kosik);
+      return;
+    }
+
+    krokPrehledDetail(prehled, kosik);
+  }
+
+  // Sdilene akce paticky prehledu (kopie, CSV, hotovo, opakovani).
+  function pripojPrehledAkce(prehled, kosik) {
+    var csv = prehledCsv(prehled, { nazevSouboru: stav ? stav.nazevSouboru : '' });
+
+    var bCsv = document.getElementById('wb-imp-csv');
+    if (bCsv) bCsv.onclick = function () { stahniCsv(csv, 'import-kosiku-prehled.csv'); };
+
+    var bKop = document.getElementById('wb-imp-kopie');
+    if (bKop) bKop.onclick = function () {
+      var b = this;
+      var hotovo = function () {
+        b.textContent = 'Zkopírováno';
+        setTimeout(function () { b.textContent = 'Kopírovat přehled'; }, 1800);
+      };
+      if (navigator.clipboard) navigator.clipboard.writeText(csv).then(hotovo, function () { fallbackKopie(csv, hotovo); });
+      else fallbackKopie(csv, hotovo);
+    };
+
+    var bHot = document.getElementById('wb-imp-hotovo');
+    if (bHot) bHot.onclick = function () {
+      zavri();
+      // Kosik se meni na serveru, stranku je potreba prekreslit,
+      // aby dealer videl skutecny obsah.
+      if (CONFIG.JEN_NA_URL.test(location.pathname)) location.reload();
+    };
+
+    var bZnovu = document.getElementById('wb-imp-znovu');
+    if (bZnovu) bZnovu.onclick = function () {
+      stav.polozky = prehled.nenalezeno.concat(prehled.neshoda).map(function (z) { return z.polozka; });
+      krokVkladani();
+    };
+  }
+
+  function krokPrehledDetail(prehled, kosik) {
     var html = '<div class="wb-imp-sum">'
       + '<span class="wb-imp-ok">✓ vloženo: ' + prehled.vlozeno.length + '</span>'
       + (prehled.nenalezeno.length ? '<span class="wb-imp-err">✗ nenalezeno: ' + prehled.nenalezeno.length + '</span>' : '')
@@ -1051,30 +1137,7 @@
       + '<button class="btn btn-conversion" id="wb-imp-hotovo" type="button">Hotovo</button>';
 
     modal(html, patka);
-
-    var csv = prehledCsv(prehled, { nazevSouboru: stav ? stav.nazevSouboru : '' });
-
-    document.getElementById('wb-imp-csv').onclick = function () {
-      stahniCsv(csv, 'import-kosiku-prehled.csv');
-    };
-    document.getElementById('wb-imp-kopie').onclick = function () {
-      var b = this;
-      var hotovo = function () { b.textContent = 'Zkopírováno'; setTimeout(function () { b.textContent = 'Kopírovat přehled'; }, 1800); };
-      if (navigator.clipboard) navigator.clipboard.writeText(csv).then(hotovo, function () { fallbackKopie(csv, hotovo); });
-      else fallbackKopie(csv, hotovo);
-    };
-    document.getElementById('wb-imp-hotovo').onclick = function () {
-      zavri();
-      // Kosik se meni na serveru, stranku je potreba prekreslit,
-      // aby dealer videl skutecny obsah.
-      if (CONFIG.JEN_NA_URL.test(location.pathname)) location.reload();
-    };
-    var znovu = document.getElementById('wb-imp-znovu');
-    if (znovu) znovu.onclick = function () {
-      var opakovat = prehled.nenalezeno.concat(prehled.neshoda).map(function (z) { return z.polozka; });
-      stav.polozky = opakovat;
-      krokVkladani();
-    };
+    pripojPrehledAkce(prehled, kosik);
   }
 
   function fallbackKopie(text, hotovo) {
