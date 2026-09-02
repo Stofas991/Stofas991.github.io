@@ -147,6 +147,22 @@
     URL_OBSAH: '/action/Cart/GetCartContent/',
     URL_SMAZAT: '/action/Cart/deleteCartItem/',
 
+    /* ---------- kontrolni rezim (nic nevklada) ---------- */
+    // Overuje kody pres vyhledavani. Je to GET, tedy CTENI - kosik se
+    // nedotkne. Slouzi k tomu, aby si dealer (nebo my pri predvadeni)
+    // mohl soubor prohnat naprazdno.
+    //
+    // Stoji 1 pozadavek na polozku, tedy zhruba 200 ms - u 300 polozek
+    // asi minutu. To je pro vkladani duvod, proc se nepouziva, ale pro
+    // jednorazovou kontrolu je to prijatelne.
+    //
+    // BONUS: vysledek vyhledavani obsahuje i dostupnost ("Skladem (4 ks)"),
+    // takze kontrolni rezim umi rict "chces 999, skladem 4". Samo
+    // vkladani to neumi - Shoptet mnozstvi nad sklad prijme bez varovani
+    // (viz bod 5 v hlavicce).
+    URL_HLEDAT: '/vyhledavani/?string=',
+    SOUBEZNE_KONTROLA: 8,
+
     DEBUG: false
   };
 
@@ -393,6 +409,66 @@
     return dalsi();
   }
 
+  /* ================= KONTROLNI REZIM (jen cteni) ================= */
+
+  // Overi jeden kod pres vyhledavani. Bere se JEN PRESNA shoda SKU -
+  // vyhledavani vraci i delsi kody (na "11149A2" vrati 7 vysledku
+  // vcetne 11149A20..A27), takze prvni vysledek by byl spatne.
+  function zkontrolujKod(kod) {
+    return fetch(CONFIG.URL_HLEDAT + encodeURIComponent(kod), {
+      credentials: 'include'
+    }).then(function (r) { return r.text(); }).then(function (html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var dlazdice = [].slice.call(doc.querySelectorAll('[data-micro="product"]'));
+
+      var presne = dlazdice.filter(function (d) {
+        var sku = d.querySelector('[data-micro="sku"]');
+        return sku && sku.textContent.trim() === kod;
+      });
+
+      if (!presne.length) {
+        return { kod: kod, nalezeno: false, vysledku: dlazdice.length };
+      }
+
+      var d = presne[0];
+      var dostupnost = d.querySelector('.availability');
+      var text = dostupnost ? dostupnost.textContent.replace(/\s+/g, ' ').trim() : '';
+      // "Skladem (4 ks)" -> 4. Kdyz to nejde precist, sklad neznamy.
+      var m = text.match(/\((\d+)\s*ks\)/i);
+
+      return {
+        kod: kod,
+        nalezeno: true,
+        nejednoznacne: presne.length > 1,
+        nazev: (d.querySelector('[data-micro="name"]') || {}).textContent
+          ? d.querySelector('[data-micro="name"]').textContent.trim() : '',
+        dostupnost: text,
+        skladem: m ? parseInt(m[1], 10) : null,
+        url: (d.querySelector('a[data-micro="url"]') || {}).getAttribute
+          ? d.querySelector('a[data-micro="url"]').getAttribute('href') : null
+      };
+    }).catch(function (e) {
+      return { kod: kod, nalezeno: null, chyba: e.message };
+    });
+  }
+
+  function zkontrolujVse(polozky, onProgress) {
+    var out = [];
+    var i = 0;
+    function davka() {
+      if (i >= polozky.length) return Promise.resolve(out);
+      var cast = polozky.slice(i, i + CONFIG.SOUBEZNE_KONTROLA);
+      i += cast.length;
+      return Promise.all(cast.map(function (p) { return zkontrolujKod(p.kod); }))
+        .then(function (res) {
+          out = out.concat(res);
+          if (onProgress) onProgress(out.length, polozky.length);
+          return davka();
+        });
+    }
+    return davka();
+  }
+
   /* ================= BEH IMPORTU ================= */
 
   // Vklada po davkach. Chyba jedne polozky nezabije beh; kdyz zacnou
@@ -562,6 +638,10 @@
       +     '<span><b>Přidat k obsahu košíku</b> — u shodných kódů se množství sečte (výchozí chování e-shopu).</span></label>'
       +   '<label><input type="radio" name="wb-imp-mode" value="vyprazdnit"' + (CONFIG.VYPRAZDNIT_PRED ? ' checked' : '') + '>'
       +     '<span><b>Nejdřív košík vyprázdnit</b> — v košíku zůstane jen to, co je v tabulce.</span></label>'
+      +   '<label style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e5e8">'
+      +     '<input type="radio" name="wb-imp-mode" value="zkontrolovat">'
+      +     '<span><b>Jen zkontrolovat soubor</b> — nic se do košíku nevloží. Ukáže, které kódy '
+      +     'v katalogu jsou, a kolik je skladem. U delších tabulek to trvá déle.</span></label>'
       + '</div>',
       '<button class="btn btn-conversion" id="wb-imp-zrus" type="button">Zrušit</button>'
     );
@@ -655,19 +735,131 @@
     html += '</tbody></table>';
     if (pol.length > 200) html += '<div class="wb-imp-note">Zobrazeno prvních 200 z ' + pol.length + '.</div>';
 
-    html += '<div class="wb-imp-note">'
-      + (stav.rezim === 'vyprazdnit'
-          ? 'Košík bude před vložením vyprázdněn.'
-          : 'Položky se přidají k obsahu košíku.')
-      + ' Odhadovaná doba vkládání: ' + Math.max(1, Math.round(pol.length * 0.09)) + '–'
-      + Math.max(2, Math.round(pol.length * 0.15)) + ' s.</div>';
+    if (stav.rezim === 'zkontrolovat') {
+      html += '<div class="wb-imp-note"><b>Kontrolní režim</b> — do košíku se nic nevloží. '
+        + 'Odhadovaná doba: ' + Math.max(1, Math.round(pol.length * 0.25)) + ' s.</div>';
+    } else {
+      html += '<div class="wb-imp-note">'
+        + (stav.rezim === 'vyprazdnit'
+            ? 'Košík bude před vložením vyprázdněn.'
+            : 'Položky se přidají k obsahu košíku.')
+        + ' Odhadovaná doba vkládání: ' + Math.max(1, Math.round(pol.length * 0.09)) + '–'
+        + Math.max(2, Math.round(pol.length * 0.15)) + ' s.</div>';
+    }
 
     modal(html,
         '<button class="btn" id="wb-imp-back" type="button">Jiný soubor</button>'
-      + '<button class="btn btn-conversion" id="wb-imp-go" type="button">Vložit do košíku</button>');
+      + '<button class="btn btn-conversion" id="wb-imp-go" type="button">'
+      + (stav.rezim === 'zkontrolovat' ? 'Zkontrolovat' : 'Vložit do košíku') + '</button>');
 
     document.getElementById('wb-imp-back').onclick = krokVyber;
-    document.getElementById('wb-imp-go').onclick = krokVkladani;
+    document.getElementById('wb-imp-go').onclick = (stav.rezim === 'zkontrolovat')
+      ? krokKontrolniBeh : krokVkladani;
+  }
+
+  /* ---------- krok 3b: kontrolni beh (nic nevklada) ---------- */
+
+  function krokKontrolniBeh() {
+    var pol = stav.polozky;
+    modal('<div id="wb-imp-stat">Kontroluji…</div>'
+      + '<div class="wb-imp-bar"><div id="wb-imp-fill"></div></div>'
+      + '<div class="wb-imp-note">Do košíku se nic nevkládá.</div>');
+
+    var stat = document.getElementById('wb-imp-stat');
+    var fill = document.getElementById('wb-imp-fill');
+
+    zkontrolujVse(pol, function (hotovo, celkem) {
+      stat.innerHTML = 'Kontroluji <b>' + hotovo + '</b> z <b>' + celkem + '</b>…';
+      fill.style.width = Math.round(hotovo / celkem * 100) + '%';
+    }).then(function (vysledky) {
+      krokPrehledKontroly(pol, vysledky);
+    }).catch(function (e) {
+      modal('<div class="wb-imp-err"><b>Kontrola se nedokončila.</b></div>'
+        + '<div style="margin-top:8px">' + String(e.message || e) + '</div>',
+        '<button class="btn" id="wb-imp-zav2" type="button">Zavřít</button>');
+      var b = document.getElementById('wb-imp-zav2');
+      if (b) b.onclick = zavri;
+    });
+  }
+
+  function krokPrehledKontroly(polozky, vysledky) {
+    var podle = {};
+    vysledky.forEach(function (v) { podle[v.kod] = v; });
+
+    var ok = [], chybi = [], nadSklad = [], nejiste = [];
+    polozky.forEach(function (p) {
+      var v = podle[p.kod];
+      if (!v || v.nalezeno === null) { nejiste.push({ p: p, v: v }); return; }
+      if (!v.nalezeno) { chybi.push({ p: p, v: v }); return; }
+      if (v.skladem !== null && p.qty > v.skladem) { nadSklad.push({ p: p, v: v }); return; }
+      ok.push({ p: p, v: v });
+    });
+
+    var html = '<div class="wb-imp-note" style="margin-top:0"><b>Kontrolní režim</b> — '
+      + 'do košíku se nic nevložilo.</div>'
+      + '<div class="wb-imp-sum">'
+      + '<span class="wb-imp-ok">✓ v katalogu: ' + ok.length + '</span>'
+      + (nadSklad.length ? '<span class="wb-imp-warn">! nad sklad: ' + nadSklad.length + '</span>' : '')
+      + (chybi.length ? '<span class="wb-imp-err">✗ nenalezeno: ' + chybi.length + '</span>' : '')
+      + (nejiste.length ? '<span class="wb-imp-warn">? nezjištěno: ' + nejiste.length + '</span>' : '')
+      + '</div>';
+
+    if (chybi.length) {
+      html += '<div style="margin-top:10px"><b class="wb-imp-err">Tyto kódy se v katalogu nenašly</b>'
+        + '<div class="wb-imp-note">Může jít o kód nahrazený výrobcem (supersession).</div>'
+        + '<table class="wb-imp-tab"><thead><tr><th>Kód</th><th>Název v tabulce</th><th>Ks</th><th></th></tr></thead><tbody>';
+      chybi.forEach(function (z) {
+        html += '<tr><td><b>' + z.p.kod + '</b></td><td>' + (z.p.popis || '—') + '</td><td>' + z.p.qty + '</td>'
+          + '<td><a href="' + CONFIG.URL_HLEDAT + encodeURIComponent(z.p.kod) + '" target="_blank" rel="noopener">hledat</a></td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    if (nadSklad.length) {
+      html += '<div style="margin-top:14px"><b class="wb-imp-warn">Požadované množství je vyšší než skladem</b>'
+        + '<div class="wb-imp-note">Vložit to lze, e-shop to dovolí — jen ať to není překvapení.</div>'
+        + '<table class="wb-imp-tab"><thead><tr><th>Kód</th><th>Název</th><th>Chcete</th><th>Skladem</th></tr></thead><tbody>';
+      nadSklad.forEach(function (z) {
+        html += '<tr><td><b>' + z.p.kod + '</b></td><td>' + (z.v.nazev || '—') + '</td>'
+          + '<td>' + z.p.qty + '</td><td>' + z.v.skladem + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    if (nejiste.length) {
+      html += '<div class="wb-imp-note" style="margin-top:14px">U ' + nejiste.length
+        + ' položek se kontrola nepovedla (chyba sítě). Zkuste to prosím znovu.</div>';
+    }
+
+    html += '<div class="wb-imp-note" style="margin-top:14px">Když je vše v pořádku, '
+      + 'zvolte „Jiný soubor" a nahrajte tabulku znovu s možností vložení do košíku.</div>';
+
+    var csv = ['Kontrola souboru;' + (stav ? stav.nazevSouboru : '')];
+    csv.push('Datum;' + new Date().toLocaleString('cs-CZ'));
+    csv.push('');
+    csv.push('Stav;Kod;Nazev v tabulce;Nazev v katalogu;Pozadovano;Skladem;Dostupnost');
+    function radek(stavTxt, z) {
+      csv.push([stavTxt, z.p.kod, z.p.popis, (z.v && z.v.nazev) || '', z.p.qty,
+        (z.v && z.v.skladem !== null && z.v.skladem !== undefined) ? z.v.skladem : '',
+        (z.v && z.v.dostupnost) || '']
+        .map(function (x) { return String(x === undefined ? '' : x).replace(/;/g, ','); }).join(';'));
+    }
+    ok.forEach(function (z) { radek('v katalogu', z); });
+    nadSklad.forEach(function (z) { radek('NAD SKLAD', z); });
+    chybi.forEach(function (z) { radek('NENALEZENO', z); });
+    nejiste.forEach(function (z) { radek('NEZJISTENO', z); });
+    var csvText = csv.join('\n');
+
+    modal(html,
+        '<button class="btn" id="wb-imp-back2" type="button">Jiný soubor</button>'
+      + '<button class="btn" id="wb-imp-csv2" type="button">Uložit CSV</button>'
+      + '<button class="btn btn-conversion" id="wb-imp-zav3" type="button">Zavřít</button>');
+
+    document.getElementById('wb-imp-back2').onclick = krokVyber;
+    document.getElementById('wb-imp-csv2').onclick = function () {
+      stahniCsv(csvText, 'kontrola-souboru.csv');
+    };
+    document.getElementById('wb-imp-zav3').onclick = zavri;
   }
 
   /* ---------- krok 3: vkladani ---------- */
