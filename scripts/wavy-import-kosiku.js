@@ -2,7 +2,7 @@
    Wavy Boats - IMPORT OBJEDNAVKOVE TABULKY DO KOSIKU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 1.3
+   Verze: 1.4
 
    Dealer nahraje svou objednavkovou tabulku (.xls / .xlsx / .csv)
    a skript z ni naplni kosik. Parsovani bezi CELE v prohlizeci,
@@ -892,10 +892,6 @@
       + '<span>Položek: <b>' + pol.length + '</b></span>'
       + '<span>Kusů celkem: <b>' + celkemKs + '</b></span>'
       + '</div>';
-
-    html += '<div>Rozpoznáno <b>' + p.radky.length + '</b> řádků z listu „' + p.nazevListu + '"';
-    if (p.preskoceno) html += ', ' + p.preskoceno + ' prázdných přeskočeno';
-    html += '.</div>';
 
     if (duplicity.length) {
       html += '<div class="wb-imp-note">Stejný kód se v tabulce opakuje u ' + duplicity.length
