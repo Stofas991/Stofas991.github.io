@@ -2,7 +2,7 @@
    Wavy Boats - IMPORT OBJEDNAVKOVE TABULKY DO KOSIKU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 1.1
+   Verze: 1.2
 
    Dealer nahraje svou objednavkovou tabulku (.xls / .xlsx / .csv)
    a skript z ni naplni kosik. Parsovani bezi CELE v prohlizeci,
@@ -785,11 +785,11 @@
       '.wb-imp-drop:hover,.wb-imp-drop.hover{border-color:var(--color-primary,#000);background:#fafafa}',
       '.wb-imp-vol{margin-top:14px;padding:12px;background:#f5f5f5;font-size:13px}',
       '.wb-imp-vol label{display:flex;gap:8px;align-items:flex-start;margin:6px 0;cursor:pointer}',
-      // Sablona Shoptetu schovava nativni radio (position:absolute;
+      // Sablona Shoptetu schovava nativni checkbox (position:absolute;
       // width:1px;height:1px;appearance:none) a kresli si vlastni pres
       // strukturu labelu, kterou tady nemame - bez tohoto resetu neni
-      // videt zadne kolecko a dealer nepozna, co je zvolene.
-      '#' + MODAL_ID + ' input[type="radio"]{appearance:auto;-webkit-appearance:radio;',
+      // videt zadne policko a dealer nepozna, co je zaskrtnute.
+      '#' + MODAL_ID + ' input[type="checkbox"]{appearance:auto;-webkit-appearance:checkbox;',
       'position:static;width:16px;height:16px;min-width:16px;margin:2px 0 0;opacity:1;flex-shrink:0}',
       '.wb-imp-tab{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}',
       '.wb-imp-tab th,.wb-imp-tab td{border-bottom:1px solid #e8e8e8;padding:5px 7px;text-align:left}',
@@ -859,12 +859,6 @@
     m.querySelector('#wb-imp-zrus').onclick = zavri;
   }
 
-  // Rezim se cte az na druhe obrazovce - volba "co s obsahem kosiku"
-  // ma smysl teprve ve chvili, kdy uzivatel vidi, co v souboru je.
-  function rezim() {
-    var el = document.querySelector('input[name="wb-imp-mode"]:checked');
-    return el ? el.value : (CONFIG.VYPRAZDNIT_PRED ? 'vyprazdnit' : 'pridat');
-  }
 
   function nactiSoubor(f) {
     modal('<div>Načítám <b>' + f.name + '</b>…</div>');
@@ -932,17 +926,28 @@
     html += '</tbody></table>';
     if (pol.length > 200) html += '<div class="wb-imp-note">Zobrazeno prvních 200 z ' + pol.length + '.</div>';
 
-    // Volba rezimu je tady, ne na prvni obrazovce - az ted uzivatel vi,
-    // co v souboru je, a muze se rozhodnout.
-    html += '<div class="wb-imp-vol">'
-      + '<label><input type="radio" name="wb-imp-mode" value="pridat"' + (CONFIG.VYPRAZDNIT_PRED ? '' : ' checked') + '>'
-      +   '<span><b>Přidat k obsahu košíku</b> — u shodných kódů se množství sečte.</span></label>'
-      + '<label><input type="radio" name="wb-imp-mode" value="vyprazdnit"' + (CONFIG.VYPRAZDNIT_PRED ? ' checked' : '') + '>'
-      +   '<span><b>Nejdřív košík vyprázdnit</b> — zůstane jen to, co je v tabulce.</span></label>'
-      + '<label style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e5e8">'
-      +   '<input type="radio" name="wb-imp-mode" value="zkontrolovat">'
-      +   '<span><b>Jen zkontrolovat</b> — nic se nevloží, ukáže dostupnost. Trvá to déle.</span></label>'
-      + '</div>';
+    // Vyprazdneni kosiku je nabidnuto jen kdyz je v nem skutecne co
+    // vyprazdnit - prazdny kosik zadnou volbu nepotrebuje, jen by matla.
+    var kosikNeprazdny = !!document.querySelector('tr[data-micro="cartItem"]');
+
+    // Rozhodnuti "co s obsahem kosiku" (checkbox, modifikator hlavni
+    // akce) a "jen zkontrolovat" (odkaz, JINA akce - nic nevklada) byly
+    // driv jedna skupina 3 radiovych tlacitek. To slucovalo dve ruzne
+    // otazky do jedne volby a popisek hlavniho tlacitka se navic menil
+    // podle vyberu - dealer musel cist dvakrat. Ted je hlavni akce
+    // porad "Vlozit do kosiku" a zbytek jsou vedlejsi, mensi ovladaci
+    // prvky pod tabulkou.
+    if (kosikNeprazdny) {
+      html += '<div class="wb-imp-vol">'
+        + '<label><input type="checkbox" id="wb-imp-vyprazdnit"' + (CONFIG.VYPRAZDNIT_PRED ? ' checked' : '') + '>'
+        +   '<span><b>Nejdřív košík vyprázdnit</b> — zůstane jen to, co je v tabulce. '
+        +   'Bez zaškrtnutí se množství u shodných kódů sečte.</span></label>'
+        + '</div>';
+    }
+
+    html += '<div class="wb-imp-note" style="margin-top:10px">'
+      + 'Chcete jen ověřit dostupnost bez vkládání do košíku? '
+      + '<a href="#" id="wb-imp-jen-kontrola">Zkontrolovat</a>.</div>';
 
     modal(html,
         '<button class="btn" id="wb-imp-back" type="button">Jiný soubor</button>'
@@ -951,27 +956,25 @@
     var go = document.getElementById('wb-imp-back');
     if (go) go.onclick = krokVyber;
 
-    // Popisek tlacitka sleduje zvolenou moznost
-    var btn = document.getElementById('wb-imp-go');
-    function prepisTlacitko() {
-      btn.textContent = (rezim() === 'zkontrolovat') ? 'Zkontrolovat' : 'Vložit do košíku';
-    }
-    [].slice.call(document.querySelectorAll('input[name="wb-imp-mode"]')).forEach(function (r) {
-      r.addEventListener('change', prepisTlacitko);
-    });
-    prepisTlacitko();
+    var vyprazdnitEl = document.getElementById('wb-imp-vyprazdnit');
+    var kontrolaOdkaz = document.getElementById('wb-imp-jen-kontrola');
+    if (kontrolaOdkaz) kontrolaOdkaz.onclick = function (e) {
+      e.preventDefault();
+      stav.rezim = 'zkontrolovat';
+      kontrolaOdkaz.textContent = 'Kontroluji…';
+      krokKontrolniBeh();
+    };
 
+    var btn = document.getElementById('wb-imp-go');
     btn.onclick = function () {
-      stav.rezim = rezim();
+      stav.rezim = (vyprazdnitEl && vyprazdnitEl.checked) ? 'vyprazdnit' : 'pridat';
       // Okamzita zpetna vazba - u kratkych behu je to jedina, kterou
       // uzivatel uvidi, protoze prubehova obrazovka uz nenaskoci.
       btn.disabled = true;
-      btn.textContent = (stav.rezim === 'zkontrolovat') ? 'Kontroluji…' : 'Vkládám…';
+      btn.textContent = 'Vkládám…';
       var zpet = document.getElementById('wb-imp-back');
       if (zpet) zpet.disabled = true;
-
-      if (stav.rezim === 'zkontrolovat') krokKontrolniBeh();
-      else krokVkladani();
+      krokVkladani();
     };
   }
 
@@ -1171,32 +1174,45 @@
 
   function krokPrehled(prehled, kosik) {
     // Nahrazene kody nejsou chyba, ale dealer o nich MUSI vedet - v kosiku
-    // je jiny kod, nez mel v tabulce. Zkraceny vysledek se proto pouzije
-    // jen kdyz zadna substituce nebyla.
+    // je jiny kod, nez mel v tabulce.
     var vseVPoradku = !prehled.nenalezeno.length && !prehled.neshoda.length
       && !prehled.neovereno.length && !(prehled.nahrazeno && prehled.nahrazeno.length);
 
-    // Kdyz je vsechno v poradku, neni co hlasit - plna tabulka polozek,
-    // ktere presne odpovidaji tomu, co uzivatel prave videl v nahledu,
-    // je jen obrad. Detail je za odkazem pro toho, kdo ho chce.
-    if (vseVPoradku) {
-      modal('<div style="font-size:15px;margin-bottom:6px">'
-          + '<b class="wb-imp-ok">Vloženo ' + prehled.vlozeno.length + ' položek do košíku.</b></div>'
-        + '<div class="wb-imp-note">Vše z tabulky se podařilo spárovat. '
-        + '<a href="#" id="wb-imp-detail">Zobrazit přehled</a></div>',
-          '<button class="btn" id="wb-imp-kopie" type="button">Kopírovat přehled</button>'
-        + '<button class="btn btn-conversion" id="wb-imp-hotovo" type="button">Hotovo</button>');
+    // Vzdy sbalene na souhrn - i kdyz neco nevyslo. Puvodne se pri
+    // jakemkoli problemu rovnou vypsaly vsechny tabulky a 4 tlacitka
+    // najednou; dusledne sbaleni je citelnejsi a detail je porad jen
+    // jeden klik daleko.
+    var pocty = '<div class="wb-imp-sum">'
+      + '<span class="wb-imp-ok">✓ vloženo: ' + prehled.vlozeno.length + '</span>'
+      + (prehled.nenalezeno.length ? '<span class="wb-imp-err">✗ nenalezeno: ' + prehled.nenalezeno.length + '</span>' : '')
+      + (prehled.neshoda.length ? '<span class="wb-imp-warn">≠ neshoda: ' + prehled.neshoda.length + '</span>' : '')
+      + (prehled.neovereno.length ? '<span class="wb-imp-warn">? neověřeno: ' + prehled.neovereno.length + '</span>' : '')
+      + ((prehled.nahrazeno && prehled.nahrazeno.length)
+          ? '<span class="wb-imp-warn">↻ nahrazeno: ' + prehled.nahrazeno.length + '</span>' : '')
+      + '</div>';
 
-      var odkaz = document.getElementById('wb-imp-detail');
-      if (odkaz) odkaz.onclick = function (e) {
-        e.preventDefault();
-        krokPrehledDetail(prehled, kosik);
-      };
-      pripojPrehledAkce(prehled, kosik);
-      return;
+    var html = pocty + '<div class="wb-imp-note">'
+      + (vseVPoradku
+          ? 'Vše z tabulky se podařilo spárovat. '
+          : 'Ne všechno se povedlo tak, jak bylo v tabulce — co a proč je v detailu. ')
+      + '<a href="#" id="wb-imp-detail">Zobrazit detail</a></div>';
+
+    // Kopirovat/CSV jsou az v detailu - tady jen to, co dealer potrebuje
+    // hned: opravit nepodarene (kdyz je co), nebo zavrit.
+    var patka = '';
+    if (prehled.nenalezeno.length || prehled.neshoda.length) {
+      patka += '<button class="btn" id="wb-imp-znovu" type="button">Zkusit znovu nepodařené</button>';
     }
+    patka += '<button class="btn btn-conversion" id="wb-imp-hotovo" type="button">Hotovo</button>';
 
-    krokPrehledDetail(prehled, kosik);
+    modal(html, patka);
+
+    var odkaz = document.getElementById('wb-imp-detail');
+    if (odkaz) odkaz.onclick = function (e) {
+      e.preventDefault();
+      krokPrehledDetail(prehled, kosik);
+    };
+    pripojPrehledAkce(prehled, kosik);
   }
 
   // Sdilene akce paticky prehledu (kopie, CSV, hotovo, opakovani).
