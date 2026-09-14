@@ -2,7 +2,7 @@
    Wavy Boats - IMPORT OBJEDNAVKOVE TABULKY DO KOSIKU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 1.5
+   Verze: 1.6
 
    Dealer nahraje svou objednavkovou tabulku (.xls / .xlsx / .csv)
    a skript z ni naplni kosik. Parsovani bezi CELE v prohlizeci,
@@ -1176,8 +1176,13 @@
 
     // Kopirovat/CSV jsou az v detailu - tady jen to, co dealer potrebuje
     // hned: opravit nepodarene (kdyz je co), nebo zavrit.
+    //
+    // Neshoda NENI duvod k opakovani - vetsinou znamena, ze polozka uz
+    // v kosiku byla pred importem (rezim "pridat" mnozstvi secte), takze
+    // opakovani by jen pridalo dalsi mnozstvi a znovu ohlasilo neshodu.
+    // Tlacitko se proto rozhoduje jen podle nenalezenych.
     var patka = '';
-    if (prehled.nenalezeno.length || prehled.neshoda.length) {
+    if (prehled.nenalezeno.length) {
       patka += '<button class="btn" id="wb-imp-znovu" type="button">Zkusit znovu nepodařené</button>';
     }
     patka += '<button class="btn btn-conversion" id="wb-imp-hotovo" type="button">Hotovo</button>';
@@ -1220,7 +1225,8 @@
 
     var bZnovu = document.getElementById('wb-imp-znovu');
     if (bZnovu) bZnovu.onclick = function () {
-      stav.polozky = prehled.nenalezeno.concat(prehled.neshoda).map(function (z) { return z.polozka; });
+      // Jen nenalezene - neshoda se neopakuje, viz komentar u tlacitka.
+      stav.polozky = prehled.nenalezeno.map(function (z) { return z.polozka; });
       // POZOR: rezim se MUSI prepnout na 'pridat'. V rezimu 'vyprazdnit'
       // by opakovani vyprazdnilo kosik ZNOVU a smazalo tim i polozky,
       // ktere se prvnim behem uspesne vlozily - v kosiku by zustalo jen
@@ -1269,6 +1275,8 @@
 
     if (prehled.neshoda.length) {
       html += '<div style="margin-top:14px"><b class="wb-imp-warn">U těchto položek nesedí množství</b>'
+        + '<div class="wb-imp-note">Obvykle to není chyba — položku jste v košíku už měli '
+        + 'a množství se k ní přičetlo. Proto se neopakují tlačítkem „Zkusit znovu".</div>'
         + '<table class="wb-imp-tab"><thead><tr><th>Kód</th><th>Požadováno</th><th>V košíku</th></tr></thead><tbody>';
       prehled.neshoda.forEach(function (z) {
         html += '<tr><td><b>' + z.polozka.kod + '</b></td><td>' + z.polozka.qty + '</td><td>' + z.vKosiku + '</td></tr>';
@@ -1288,7 +1296,7 @@
     }
 
     var patka = '';
-    if (prehled.nenalezeno.length || prehled.neshoda.length) {
+    if (prehled.nenalezeno.length) {
       patka += '<button class="btn" id="wb-imp-znovu" type="button">Zkusit znovu nepodařené</button>';
     }
     patka += '<button class="btn" id="wb-imp-kopie" type="button">Kopírovat přehled</button>'
