@@ -2,7 +2,7 @@
    Wavy Boats - IMPORT OBJEDNAVKOVE TABULKY DO KOSIKU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 1.4
+   Verze: 1.5
 
    Dealer nahraje svou objednavkovou tabulku (.xls / .xlsx / .csv)
    a skript z ni naplni kosik. Parsovani bezi CELE v prohlizeci,
@@ -1365,10 +1365,42 @@
     return false;
   }
 
+  // Kdyz dealer smaze polozku z kosiku (nebo zmeni mnozstvi), Shoptet
+  // obsah prekresli pres AJAX - a s nim casto zmizi i nase vlozena
+  // lista s tlacitkem, protoze byla jen sourozenec tabulky, ne jeji
+  // soucast. Bez sledovani zustane tlacitko natrvalo pryc, i kdyz se
+  // URL kosiku nezmenila. Stejny vzor jako u ostatnich skriptu
+  // (sledovani document.body, ne konkretniho uzlu, ktery muze byt
+  // nahrazen) - viz wavy-original-code-detail.js, bod P3.
+  function sledujZmeny() {
+    if (!window.MutationObserver) return;
+    var timer = null;
+    function ping() {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        if (!document.querySelector('.wb-imp-launch') && CONFIG.JEN_NA_URL.test(location.pathname)) {
+          if (!vlozTlacitko()) log('misto pro tlacitko se nenaslo (po prekresleni)');
+        }
+      }, 400);
+    }
+    var obs = new MutationObserver(function (records) {
+      for (var i = 0; i < records.length; i++) {
+        var t = records[i].target;
+        // Vlastni zmeny (modal, progress bar, vlastni lista) ignorovat -
+        // jinak by kazdy krok importu spoustel zbytecnou kontrolu.
+        if (t.closest && (t.closest('.wb-imp-launch') || t.closest('#' + MODAL_ID))) continue;
+        ping();
+        return;
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+  }
+
   function init() {
     vlozStyl();
     if (!CONFIG.JEN_NA_URL.test(location.pathname)) return;
     if (!vlozTlacitko()) log('misto pro tlacitko se nenaslo');
+    sledujZmeny();
   }
 
   /* ---------- ladici API ---------- */
