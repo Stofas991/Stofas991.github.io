@@ -2,7 +2,7 @@
    Wavy Boats - IMPORT OBJEDNAVKOVE TABULKY DO KOSIKU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 1.2
+   Verze: 1.3
 
    Dealer nahraje svou objednavkovou tabulku (.xls / .xlsx / .csv)
    a skript z ni naplni kosik. Parsovani bezi CELE v prohlizeci,
@@ -99,10 +99,10 @@
    POZOR NA SABLONU
    ------------------------------------------------------------
    Sablona schovava nativni formularove prvky a kresli si vlastni
-   pres strukturu svych labelu. Overeno na radiu: dostane
+   pres strukturu svych labelu. Overeno na checkboxu: dostane
    position:absolute; width:1px; height:1px; appearance:none.
    Cokoli formularoveho, co se sem prida, proto MUSI mit vlastni
-   reset uvnitr modalu (viz pravidlo pro input[type=radio] ve
+   reset uvnitr modalu (viz pravidlo pro input[type=checkbox] ve
    vlozStyl) - jinak je prvek fakticky neviditelny a uzivatel
    nepozna, co je zvolene.
 
@@ -185,10 +185,8 @@
     // asi minutu. To je pro vkladani duvod, proc se nepouziva, ale pro
     // jednorazovou kontrolu je to prijatelne.
     //
-    // BONUS: vysledek vyhledavani obsahuje i dostupnost ("Skladem (4 ks)"),
-    // takze kontrolni rezim umi rict "chces 999, skladem 4". Samo
-    // vkladani to neumi - Shoptet mnozstvi nad sklad prijme bez varovani
-    // (viz bod 5 v hlavicce).
+    // Rika jen to, jestli se kod da sparovat - dostupnost/sklad se
+    // zamerne necte a neresi, viz krokPrehledKontroly.
     URL_HLEDAT: '/vyhledavani/?string=',
     SOUBEZNE_KONTROLA: 8,
 
@@ -613,21 +611,16 @@
       }
 
       var d = presne[0];
-      var dostupnost = d.querySelector('.availability');
-      var text = dostupnost ? dostupnost.textContent.replace(/\s+/g, ' ').trim() : '';
-      // "Skladem (4 ks)" -> 4. Kdyz to nejde precist, sklad neznamy.
-      var m = text.match(/\((\d+)\s*ks\)/i);
 
+      // Dostupnost/sklad se zamerne necte - kontrola ma rict jen to,
+      // jestli kod jde sparovat, ne kolik je ho skladem (viz
+      // krokPrehledKontroly).
       return {
         kod: kod,
         nalezeno: true,
         nejednoznacne: presne.length > 1,
         nazev: (d.querySelector('[data-micro="name"]') || {}).textContent
-          ? d.querySelector('[data-micro="name"]').textContent.trim() : '',
-        dostupnost: text,
-        skladem: m ? parseInt(m[1], 10) : null,
-        url: (d.querySelector('a[data-micro="url"]') || {}).getAttribute
-          ? d.querySelector('a[data-micro="url"]').getAttribute('href') : null
+          ? d.querySelector('[data-micro="name"]').textContent.trim() : ''
       };
     }).catch(function (e) {
       return { kod: kod, nalezeno: null, chyba: e.message };
@@ -1007,12 +1000,15 @@
     var podle = {};
     vysledky.forEach(function (v) { podle[v.kod] = v; });
 
-    var ok = [], chybi = [], nadSklad = [], nejiste = [];
+    // Mnozstvi nad sklad se zamerne neresi - Shoptet ho pri vkladani
+    // stejne tise prijme (viz bod 5 v hlavicce), takze varovani tady by
+    // slibovalo kontrolu, kterou vkladani samo nedodrzi. Kontrola tedy
+    // hlasi jen to, na cem opravdu zalezi: jde kod spárovat, nebo ne.
+    var ok = [], chybi = [], nejiste = [];
     polozky.forEach(function (p) {
       var v = podle[p.kod];
       if (!v || v.nalezeno === null) { nejiste.push({ p: p, v: v }); return; }
       if (!v.nalezeno) { chybi.push({ p: p, v: v }); return; }
-      if (v.skladem !== null && p.qty > v.skladem) { nadSklad.push({ p: p, v: v }); return; }
       ok.push({ p: p, v: v });
     });
 
@@ -1020,7 +1016,6 @@
       + 'do košíku se nic nevložilo.</div>'
       + '<div class="wb-imp-sum">'
       + '<span class="wb-imp-ok">✓ v katalogu: ' + ok.length + '</span>'
-      + (nadSklad.length ? '<span class="wb-imp-warn">! nad sklad: ' + nadSklad.length + '</span>' : '')
       + (chybi.length ? '<span class="wb-imp-err">✗ nenalezeno: ' + chybi.length + '</span>' : '')
       + (nejiste.length ? '<span class="wb-imp-warn">? nezjištěno: ' + nejiste.length + '</span>' : '')
       + '</div>';
@@ -1036,17 +1031,6 @@
       html += '</tbody></table></div>';
     }
 
-    if (nadSklad.length) {
-      html += '<div style="margin-top:14px"><b class="wb-imp-warn">Požadované množství je vyšší než skladem</b>'
-        + '<div class="wb-imp-note">Vložit to lze, e-shop to dovolí — jen ať to není překvapení.</div>'
-        + '<table class="wb-imp-tab"><thead><tr><th>Kód</th><th>Název</th><th>Chcete</th><th>Skladem</th></tr></thead><tbody>';
-      nadSklad.forEach(function (z) {
-        html += '<tr><td><b>' + z.p.kod + '</b></td><td>' + (z.v.nazev || '—') + '</td>'
-          + '<td>' + z.p.qty + '</td><td>' + z.v.skladem + '</td></tr>';
-      });
-      html += '</tbody></table></div>';
-    }
-
     if (nejiste.length) {
       html += '<div class="wb-imp-note" style="margin-top:14px">U ' + nejiste.length
         + ' položek se kontrola nepovedla (chyba sítě). Zkuste to prosím znovu.</div>';
@@ -1058,15 +1042,12 @@
     var csv = ['Kontrola souboru;' + (stav ? stav.nazevSouboru : '')];
     csv.push('Datum;' + new Date().toLocaleString('cs-CZ'));
     csv.push('');
-    csv.push('Stav;Kod;Nazev v tabulce;Nazev v katalogu;Pozadovano;Skladem;Dostupnost');
+    csv.push('Stav;Kod;Nazev v tabulce;Nazev v katalogu;Pozadovano');
     function radek(stavTxt, z) {
-      csv.push([stavTxt, z.p.kod, z.p.popis, (z.v && z.v.nazev) || '', z.p.qty,
-        (z.v && z.v.skladem !== null && z.v.skladem !== undefined) ? z.v.skladem : '',
-        (z.v && z.v.dostupnost) || '']
+      csv.push([stavTxt, z.p.kod, z.p.popis, (z.v && z.v.nazev) || '', z.p.qty]
         .map(function (x) { return String(x === undefined ? '' : x).replace(/;/g, ','); }).join(';'));
     }
     ok.forEach(function (z) { radek('v katalogu', z); });
-    nadSklad.forEach(function (z) { radek('NAD SKLAD', z); });
     chybi.forEach(function (z) { radek('NENALEZENO', z); });
     nejiste.forEach(function (z) { radek('NEZJISTENO', z); });
     var csvText = csv.join('\n');
