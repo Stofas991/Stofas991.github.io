@@ -2,7 +2,7 @@
    Wavy Boats - IMPORT OBJEDNAVKOVE TABULKY DO KOSIKU
    ------------------------------------------------------------
    Autor: Krystof Glos / glos-optimalizace.cz
-   Verze: 1.0
+   Verze: 1.1
 
    Dealer nahraje svou objednavkovou tabulku (.xls / .xlsx / .csv)
    a skript z ni naplni kosik. Parsovani bezi CELE v prohlizeci,
@@ -116,6 +116,13 @@
     /* ---------- kde se objevi tlacitko ---------- */
     // Zamerne plosne kotvy, ne hluboke CSS cesty - Shoptet meni
     // sablony a hluboky selektor by tise prestal platit.
+    //
+    // POZOR NA POZICI: do techto kotev se lista vklada na KONEC, nikdy
+    // na zacatek. Nahore v kosiku je lista kroku objednavky
+    // ("1 Nakupni kosik / 2 Doprava & platba / 3 Informace o vas"),
+    // ktera je polohovana a kreslila se PRES tlacitko - dealer videl
+    // tlacitko a text kroku pres sebe. Primarni umisteni je proto
+    // nad tabulkou polozek, ne na zacatku kontejneru.
     KOTVY: [
       '.cart-content',
       '#content .cart',
@@ -754,6 +761,18 @@
     s.textContent = [
       '#' + MODAL_ID + ',.wb-imp-btn{font-family:var(--template-font,inherit)}',
       '.wb-imp-btn{display:inline-flex;align-items:center;gap:8px;margin:12px 0;cursor:pointer}',
+      // Lista s tlacitkem: vlastni blok pres celou sirku, nepruhledne
+      // pozadi a z-index. I kdyby ji sablona nekdy prekryla, neni pres
+      // ni videt cizi text - a clear/position:relative ji drzi mimo
+      // polohovanou listu kroku objednavky.
+      '.wb-imp-launch{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;',
+      'box-sizing:border-box;width:100%;clear:both;position:relative;z-index:3;margin:0 0 18px;padding:12px 14px;',
+      'border:1px solid #e0e0e0;background:#fff}',
+      '.wb-imp-launch .wb-imp-btn{margin:0;flex-shrink:0}',
+      '.wb-imp-launch-txt{font-size:13px;line-height:1.4;color:#4d4d4d}',
+      // Plovouci zaloha pro pripad, ze v DOM nesedi zadna kotva.
+      '.wb-imp-launch-fix{position:fixed;right:18px;bottom:18px;width:auto;max-width:min(420px,92vw);',
+      'margin:0;z-index:99998;box-shadow:0 6px 24px rgba(0,0,0,.25)}',
       '#' + MODAL_ID + '{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}',
       '.wb-imp-box{background:#fff;color:#4d4d4d;width:min(760px,94vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.45)}',
       '.wb-imp-hd{padding:14px 18px;background:var(--color-header-background,#000);color:#fff;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}',
@@ -1299,8 +1318,18 @@
 
   /* ================= START ================= */
 
+  // Bez .closest() - ten neni ve starsich prohlizecich a zbytek skriptu
+  // se jim take vyhyba (viz [].slice.call vys).
+  function nadrazenaTabulka(el) {
+    while (el && el !== document.body) {
+      if (el.tagName === 'TABLE') return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
   function vlozTlacitko() {
-    if (document.querySelector('.wb-imp-btn')) return true;
+    if (document.querySelector('.wb-imp-launch')) return true;
 
     var btn = document.createElement('button');
     btn.type = 'button';
@@ -1308,13 +1337,36 @@
     btn.textContent = 'Nahrát objednávkovou tabulku';
     btn.onclick = krokVyber;
 
+    var popis = document.createElement('span');
+    popis.className = 'wb-imp-launch-txt';
+    popis.textContent = 'Máte objednávkovou tabulku z rozkresu? Naplňte si z ní košík.';
+
+    var lista = document.createElement('div');
+    lista.className = 'wb-imp-launch';
+    lista.appendChild(popis);
+    lista.appendChild(btn);
+
+    // 1) Nad tabulku polozek kosiku. Kotva je sama tabulka, takze
+    //    umisteni nezavisi na nazvech trid sablony. Radky kosiku maji
+    //    data-micro="cartItem" - overeno, cte je i zbytek skriptu.
+    var radek = document.querySelector('tr[data-micro="cartItem"]');
+    var tabulka = radek ? nadrazenaTabulka(radek) : null;
+    if (tabulka && tabulka.parentNode) {
+      tabulka.parentNode.insertBefore(lista, tabulka);
+      return true;
+    }
+
+    // 2) Prazdny kosik nema tabulku - pak na KONEC kontejneru.
+    //    Na zacatek ne, tam je lista kroku objednavky.
     for (var i = 0; i < CONFIG.KOTVY.length; i++) {
       var kotva = document.querySelector(CONFIG.KOTVY[i]);
-      if (kotva) { kotva.insertBefore(btn, kotva.firstChild); return true; }
+      if (kotva) { kotva.appendChild(lista); return true; }
     }
+
+    // 3) Zadna kotva - plovouci vpravo dole.
     if (CONFIG.PLOVOUCI_FALLBACK) {
-      btn.style.cssText = 'position:fixed;bottom:18px;right:18px;z-index:99998';
-      document.body.appendChild(btn);
+      lista.className += ' wb-imp-launch-fix';
+      document.body.appendChild(lista);
       return true;
     }
     return false;
