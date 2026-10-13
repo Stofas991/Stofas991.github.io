@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="description" content="Jednoduchý generátor faktur.">
+  <title>Generátor faktury — Glos Optimalizace</title>
+  <link rel="stylesheet" href="faktura.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="app-header">
+      <a class="back-link" href="index.html">← glos.optimalizace</a>
+      <div class="header-row">
+        <div>
+          <p class="eyebrow">Interní nástroj</p>
+          <h1>Generátor faktury</h1>
+          <p class="intro">Faktury, odběratelé a stavy plateb na jednom místě. Data jsou v databázi, dostupná odkudkoliv.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="notice" id="notice" role="status" hidden></div>
+
+    <section class="panel-card narrow" id="setupView" hidden>
+      <h2>Chybí připojení k databázi</h2>
+      <p>Doplň <code>SUPABASE_URL</code> a <code>SUPABASE_ANON_KEY</code> na začátku souboru <code>faktura-db.js</code> a spusť <code>supabase/schema.sql</code> v SQL editoru projektu.</p>
+    </section>
+
+    <section class="panel-card narrow" id="authView" hidden>
+      <h2>Přihlášení</h2>
+      <p class="muted">Pošleme ti odkaz pro přihlášení na e-mail. Funguje jen pro účet vytvořený v Supabase.</p>
+      <form id="authForm" class="stack">
+        <label>E-mail<input name="email" type="email" required autocomplete="email"></label>
+        <button class="button button-primary" type="submit">Poslat přihlašovací odkaz</button>
+      </form>
+    </section>
+
+    <div id="appViews" hidden>
+      <nav class="tabs">
+        <button type="button" data-tab="list">Faktury</button>
+        <button type="button" data-tab="customers">Odběratelé</button>
+        <button type="button" data-tab="settings">Dodavatel</button>
+        <span class="tabs-spacer"></span>
+        <button type="button" id="signOutButton">Odhlásit</button>
+      </nav>
+
+      <section id="listView" hidden>
+        <div class="panel-card legacy-banner" id="legacyBanner" hidden>
+          <span>V tomto prohlížeči je uložená faktura ze starého generátoru.</span>
+          <button class="button button-ghost" id="importLegacyButton" type="button">Importovat do databáze</button>
+        </div>
+        <div class="list-head">
+          <h2>Vystavené faktury</h2>
+          <button class="button button-primary" id="newInvoiceButton" type="button">+ Nová faktura</button>
+        </div>
+        <div class="panel-card table-wrap">
+          <table class="data-table" id="invoiceTable"></table>
+        </div>
+      </section>
+
+      <section id="customersView" hidden>
+        <div class="list-head"><h2>Adresář odběratelů</h2></div>
+        <div class="customers-layout">
+          <div class="panel-card table-wrap"><table class="data-table" id="customerTable"></table></div>
+          <form class="panel-card stack" id="customerForm">
+            <h3 id="customerFormTitle">Nový odběratel</h3>
+            <input type="hidden" name="id">
+            <label>Název<input name="name" required></label>
+            <label>Adresa<input name="address"></label>
+            <label>Město a PSČ<input name="city"></label>
+            <div class="field-grid two-columns"><label>IČO<input name="ico"></label><label>DIČ<input name="dic"></label></div>
+            <label>Fakturační e-mail<input name="email" type="email"></label>
+            <div class="row-actions">
+              <button class="button button-primary" type="submit">Uložit</button>
+              <button class="button button-ghost" id="customerResetButton" type="button">Nový</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="settingsView" hidden>
+        <div class="list-head"><h2>Údaje dodavatele</h2></div>
+        <form class="panel-card stack narrow" id="settingsForm">
+          <p class="muted">Předvyplní se do každé nové faktury. Už vystavené faktury se nemění.</p>
+          <label>Název<input name="name" required></label>
+          <label>Adresa<input name="address"></label>
+          <label>Město a PSČ<input name="city"></label>
+          <div class="field-grid two-columns"><label>IČO<input name="ico"></label><label>DIČ<input name="dic"></label></div>
+          <label>Bankovní účet<input name="account"></label>
+          <label>E-mail<input name="email" type="email"></label>
+          <label>Web<input name="website"></label>
+          <div class="field-grid two-columns">
+            <label>Výchozí způsob úhrady<input name="payment"></label>
+            <label>Výchozí splatnost (dnů)<input name="due_days" type="number" min="0" step="1"></label>
+          </div>
+          <label class="checkbox-label"><input name="vat_payer" type="checkbox"> Jsem plátce DPH</label>
+          <div class="row-actions"><button class="button button-primary" type="submit">Uložit</button></div>
+        </form>
+      </section>
+
+      <section id="editorView" hidden>
+        <div class="editor-bar">
+          <button class="button button-ghost" id="backButton" type="button">← Seznam faktur</button>
+          <div class="header-actions">
+            <button class="button button-ghost danger" id="deleteButton" type="button">Smazat koncept</button>
+            <button class="button button-primary" id="printButton" type="button">Stáhnout PDF <span>↓</span></button>
+          </div>
+        </div>
+        <div class="workspace">
+          <form class="form-panel" id="invoiceForm">
+            <section class="form-section">
+              <div class="section-heading"><span>01</span><h2>Doklad</h2></div>
+              <div class="field-grid three-columns">
+                <label>Číslo faktury<input name="number" required></label>
+                <label>Datum vystavení<input name="issued" type="date" required></label>
+                <label>Datum splatnosti<input name="due" type="date" required></label>
+              </div>
+              <div class="field-grid three-columns">
+                <label>Způsob úhrady<input name="payment" required></label>
+                <label>Variabilní symbol<input name="symbol" required></label>
+                <label>Stav
+                  <select name="status">
+                    <option value="draft">Koncept</option>
+                    <option value="sent">Odeslaná</option>
+                    <option value="paid">Zaplacená</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-heading"><span>02</span><h2>Strany</h2></div>
+              <div class="party-grid">
+                <fieldset><legend>Dodavatel</legend>
+                  <label>Název<input name="supplierName" required></label>
+                  <label>Adresa<input name="supplierAddress" required></label>
+                  <label>Město a PSČ<input name="supplierCity" required></label>
+                  <div class="field-grid two-columns"><label>IČO<input name="supplierId"></label><label>DIČ<input name="supplierVat"></label></div>
+                  <label>Bankovní účet<input name="account"></label>
+                  <label>E-mail<input name="supplierEmail" type="email"></label>
+                  <label>Web<input name="website"></label>
+                </fieldset>
+                <fieldset><legend>Odběratel</legend>
+                  <label>Z adresáře<select name="customerRef" id="customerSelect"></select></label>
+                  <label>Název<input name="customerName" required></label>
+                  <label>Adresa<input name="customerAddress" required></label>
+                  <label>Město a PSČ<input name="customerCity" required></label>
+                  <div class="field-grid two-columns"><label>IČO<input name="customerId"></label><label>DIČ<input name="customerVat"></label></div>
+                  <label>Fakturační e-mail<input name="customerEmail" type="email"></label>
+                </fieldset>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-heading"><span>03</span><h2>Položky</h2></div>
+              <div id="items" class="items-editor"></div>
+              <button class="add-item" id="addItemButton" type="button">+ Přidat položku</button>
+            </section>
+
+            <section class="form-section last-section">
+              <div class="section-heading"><span>04</span><h2>Doplňující údaje</h2></div>
+              <label>Poznámka pod součtem<textarea name="note" rows="2"></textarea></label>
+              <label class="checkbox-label"><input name="vatPayer" type="checkbox"> Jsem plátce DPH</label>
+            </section>
+          </form>
+
+          <section class="preview-panel">
+            <div class="preview-toolbar"><span>Náhled dokladu</span><span class="saved-status" id="savedStatus"></span></div>
+            <article class="invoice-paper" id="invoicePreview"></article>
+          </section>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="faktura-db.js"></script>
+  <script src="faktura.js"></script>
+</body>
+</html>
