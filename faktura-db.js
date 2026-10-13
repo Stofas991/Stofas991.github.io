@@ -1,6 +1,6 @@
 // Vrstva nad Supabase. URL a anon klíč jsou veřejné záměrně, data chrání přihlášení a RLS (supabase/schema.sql).
-const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR-ANON-KEY';
+const SUPABASE_URL = 'https://xbtoxmfwzvesfdpiussf.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_FIpFHwUtkDH6hxGJcqve4w_-Buem216';
 
 const sb = SUPABASE_URL.includes('YOUR-PROJECT') ? null : supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
