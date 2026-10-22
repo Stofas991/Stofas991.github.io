@@ -222,33 +222,30 @@ $('addItemButton').addEventListener('click', () => {
 });
 $('printButton').addEventListener('click', downloadPdf);
 
-// Přímé stažení PDF: náhled se vykreslí mimo obrazovku na pevnou šířku A4, takže nezáleží na velikosti okna (mobil).
+// Přímé stažení PDF. Vykresluje se na pevnou šířku A4 (windowWidth), aby na mobilu neplatila mobilní rozložení.
+// html2pdf si kopii vloží do vlastního vycentrovaného kontejneru, proto je výřez pevně od rohu (x, y, scroll = 0):
+// jinak by se podle šířky okna a posunu stránky snímalo vedle faktury a PDF vyšlo prázdné.
 async function downloadPdf() {
   if (typeof html2pdf === 'undefined') { window.print(); return; }
   const button = $('printButton');
   const label = button.innerHTML;
   button.disabled = true;
   button.textContent = 'Generuji PDF…';
-  const host = document.createElement('div');
-  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff';
   const paper = preview.cloneNode(true);
   paper.removeAttribute('id');
   paper.style.cssText = 'width:794px;max-width:none;min-height:0;margin:0;box-shadow:none';
-  host.appendChild(paper);
-  document.body.appendChild(host);
   try {
     await html2pdf().set({
       margin: 0,
       filename: `faktura-${String(data.number).replace(/[^\w.-]+/g, '_')}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, windowWidth: 794 },
+      html2canvas: { scale: 2, useCORS: true, windowWidth: 794, x: 0, y: 0, scrollX: 0, scrollY: 0 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.total', '.vat-note', 'footer'] }
     }).from(paper).save();
   } catch (error) {
     notify('PDF se nepodařilo vytvořit: ' + error.message, true);
   } finally {
-    host.remove();
     button.disabled = false;
     button.innerHTML = label;
   }
