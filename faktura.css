@@ -39,3 +39,6 @@ code{background:#e8eee9;padding:1px 5px;border-radius:3px;font-size:13px}
 .customers-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;align-items:start}
 .customer-form h3,#customerForm h3{font:600 17px 'Space Grotesk'}
 @media(max-width:900px){.customers-layout{grid-template-columns:1fr}.editor-bar,.list-head{flex-wrap:wrap}}
+
+/* Tisk musí být až na konci: dřívější pravidla (.tabs, .editor-bar) jinak přebíjejí skrytí. */
+@media print{.app-header,.form-panel,.preview-toolbar,.tabs,.editor-bar,.notice,.list-head,#listView,#customersView,#settingsView,#authView,#setupView{display:none!important}.preview-panel{display:block!important}}

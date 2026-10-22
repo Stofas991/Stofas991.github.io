@@ -220,7 +220,39 @@ $('addItemButton').addEventListener('click', () => {
   saveAndRender();
   itemsElement.lastElementChild.querySelector('input').focus();
 });
-$('printButton').addEventListener('click', () => window.print());
+$('printButton').addEventListener('click', downloadPdf);
+
+// Přímé stažení PDF: náhled se vykreslí mimo obrazovku na pevnou šířku A4, takže nezáleží na velikosti okna (mobil).
+async function downloadPdf() {
+  if (typeof html2pdf === 'undefined') { window.print(); return; }
+  const button = $('printButton');
+  const label = button.innerHTML;
+  button.disabled = true;
+  button.textContent = 'Generuji PDF…';
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff';
+  const paper = preview.cloneNode(true);
+  paper.removeAttribute('id');
+  paper.style.cssText = 'width:794px;max-width:none;min-height:0;margin:0;box-shadow:none';
+  host.appendChild(paper);
+  document.body.appendChild(host);
+  try {
+    await html2pdf().set({
+      margin: 0,
+      filename: `faktura-${String(data.number).replace(/[^\w.-]+/g, '_')}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, windowWidth: 794 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.total', '.vat-note', 'footer'] }
+    }).from(paper).save();
+  } catch (error) {
+    notify('PDF se nepodařilo vytvořit: ' + error.message, true);
+  } finally {
+    host.remove();
+    button.disabled = false;
+    button.innerHTML = label;
+  }
+}
 $('backButton').addEventListener('click', () => run(async () => { await flushSave(); await openList(); }));
 $('deleteButton').addEventListener('click', () => run(async () => {
   if (!confirm(`Opravdu smazat koncept ${data.number}? Číslo se znovu nepoužije.`)) return;
