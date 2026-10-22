@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive">
   <meta name="description" content="Jednoduchý generátor faktur.">
   <title>Generátor faktury — Glos Optimalizace</title>
-  <link rel="stylesheet" href="faktura.css?v=3">
+  <link rel="stylesheet" href="faktura.css?v=4">
 </head>
 <body>
   <main class="app-shell">
@@ -40,6 +40,7 @@
     <div id="appViews" hidden>
       <nav class="tabs">
         <button type="button" data-tab="list">Faktury</button>
+        <button type="button" data-tab="overview">Přehled</button>
         <button type="button" data-tab="customers">Odběratelé</button>
         <button type="button" data-tab="settings">Dodavatel</button>
         <span class="tabs-spacer"></span>
@@ -57,6 +58,30 @@
         </div>
         <div class="panel-card table-wrap">
           <table class="data-table" id="invoiceTable"></table>
+        </div>
+      </section>
+
+      <section id="overviewView" hidden>
+        <div class="list-head">
+          <h2>Přehled</h2>
+          <label class="year-picker">Rok<select id="overviewYear"></select></label>
+        </div>
+        <div class="stat-row" id="overviewStats"></div>
+        <section class="panel-card overview-card">
+          <h3>Příjmy po měsících</h3>
+          <p class="muted small">Vyfakturováno podle data vystavení, zaplaceno podle data úhrady. Koncepty se nepočítají.</p>
+          <div id="incomeChart"></div>
+        </section>
+        <div class="overview-grid">
+          <section class="panel-card overview-card">
+            <h3>Klienti</h3>
+            <p class="muted small">Vyfakturováno ve vybraném roce a průměrná doba od vystavení do úhrady.</p>
+            <div id="clientList"></div>
+          </section>
+          <section class="panel-card overview-card">
+            <h3>Daňový souhrn</h3>
+            <div id="taxSummary"></div>
+          </section>
         </div>
       </section>
 
@@ -128,6 +153,9 @@
                   </select>
                 </label>
               </div>
+              <div class="field-grid three-columns" id="paidDateField" hidden>
+                <label>Datum úhrady<input name="paidDate" type="date"></label>
+              </div>
             </section>
 
             <section class="form-section">
@@ -176,7 +204,8 @@
   </main>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
-  <script src="faktura-db.js"></script>
-  <script src="faktura.js?v=3"></script>
+  <script src="faktura-db.js?v=4"></script>
+  <script src="faktura.js?v=4"></script>
+  <script src="faktura-prehled.js?v=4"></script>
 </body>
 </html>

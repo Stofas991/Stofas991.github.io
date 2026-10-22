@@ -13,7 +13,8 @@ const customerToForm = (c = {}) => ({ customerName: c.name || '', customerAddres
 function invoiceToForm(row) {
   return {
     id: row.id, number: row.number, issued: row.issued || '', due: row.due || '', payment: row.payment, symbol: row.symbol,
-    status: row.status, note: row.note, vatPayer: row.vat_payer, customerRef: row.customer_id || '',
+    status: row.status, paidDate: row.paid_at ? new Date(row.paid_at).toLocaleDateString('sv-SE') : '',
+    note: row.note, vatPayer: row.vat_payer, customerRef: row.customer_id || '',
     ...supplierToForm(row.supplier_snapshot), ...customerToForm(row.customer_snapshot),
     items: [...(row.invoice_items || [])].sort((a, b) => a.position - b.position)
       .map(i => ({ description: i.description, details: i.details, quantity: Number(i.quantity), price: Number(i.price) }))
@@ -42,9 +43,13 @@ const db = {
   saveCustomer: async c => unwrap(await sb.from('customers').upsert(c).select().single()),
   deleteCustomer: async id => unwrap(await sb.from('customers').delete().eq('id', id)),
 
-  listInvoices: async () => unwrap(await sb.from('invoices').select('id,number,issued,due,status,customer_snapshot,invoice_items(quantity,price)').order('number', { ascending: false })),
+  listInvoices: async () => unwrap(await sb.from('invoices').select('id,number,issued,due,status,paid_at,customer_id,customer_snapshot,invoice_items(quantity,price)').order('number', { ascending: false })),
   getInvoice: async id => invoiceToForm(unwrap(await sb.from('invoices').select('*, invoice_items(*)').eq('id', id).single())),
   createInvoice: async () => unwrap(await sb.rpc('create_invoice')),
-  saveInvoice: async d => unwrap(await sb.rpc('save_invoice', { p: formToInvoice(d) })),
+  saveInvoice: async d => {
+    unwrap(await sb.rpc('save_invoice', { p: formToInvoice(d) }));
+    // save_invoice dá při zaplacení „teď“; skutečné datum úhrady (např. u starších faktur) se přepíše zvlášť.
+    if (d.status === 'paid' && d.paidDate) unwrap(await sb.from('invoices').update({ paid_at: new Date(d.paidDate + 'T12:00:00').toISOString() }).eq('id', d.id));
+  },
   deleteInvoice: async id => unwrap(await sb.from('invoices').delete().eq('id', id))
 };

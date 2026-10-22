@@ -1,5 +1,5 @@
 const LEGACY_KEY = 'glos-faktura-data';
-const VIEWS = ['list', 'customers', 'settings', 'editor'];
+const VIEWS = ['list', 'overview', 'customers', 'settings', 'editor'];
 const $ = id => document.getElementById(id);
 const form = $('invoiceForm');
 const itemsElement = $('items');
@@ -96,7 +96,7 @@ $('invoiceTable').addEventListener('click', event => {
   const id = event.target.closest('tr').dataset.id;
   run(async () => {
     if (action === 'open') await openInvoice(id);
-    if (action === 'paid') { const invoice = await db.getInvoice(id); invoice.status = 'paid'; await db.saveInvoice(invoice); await openList(); notify(`Faktura ${invoice.number} je označená jako zaplacená.`); }
+    if (action === 'paid') { const invoice = await db.getInvoice(id); invoice.status = 'paid'; invoice.paidDate = todayIso(); await db.saveInvoice(invoice); await openList(); notify(`Faktura ${invoice.number} je označená jako zaplacená.`); }
     if (action === 'duplicate') await duplicateInvoice(id);
   });
 });
@@ -108,7 +108,7 @@ async function duplicateInvoice(sourceId) {
   const id = await db.createInvoice();
   const fresh = await db.getInvoice(id);
   const supplier = Object.fromEntries(Object.keys(supplierToForm()).map(key => [key, fresh[key]]));
-  await db.saveInvoice({ ...source, ...supplier, id, number: fresh.number, symbol: fresh.symbol, issued: fresh.issued, due: fresh.due, status: 'draft' });
+  await db.saveInvoice({ ...source, ...supplier, id, number: fresh.number, symbol: fresh.symbol, issued: fresh.issued, due: fresh.due, status: 'draft', paidDate: '' });
   await openInvoice(id);
   notify(`Vytvořena kopie jako faktura ${fresh.number}.`);
 }
@@ -185,6 +185,7 @@ function saveAndRender() {
 function renderPreview() {
   const subtotal = sumItems(data.items);
   $('deleteButton').hidden = data.status !== 'draft';
+  $('paidDateField').hidden = data.status !== 'paid';
   const rows = data.items.map(item => `<tr><td><strong>${escapeHtml(item.description)}</strong>${item.details ? `<small>${escapeHtml(item.details)}</small>` : ''}</td><td>${formatMoney(item.quantity * item.price)}</td></tr>`).join('');
   preview.innerHTML = `<header class="invoice-head"><div><h2>Faktura</h2><p>č. ${escapeHtml(data.number)}</p></div><div class="document-type">Daňový doklad<br>${data.vatPayer ? 'Plátce DPH' : 'Neplátce DPH'}</div></header>
     <div class="parties"><div><h3>Dodavatel</h3><strong>${escapeHtml(data.supplierName)}</strong><div>${escapeHtml(data.supplierAddress)}</div><div>${escapeHtml(data.supplierCity)}</div><br><div>IČO: ${escapeHtml(data.supplierId)}</div>${data.supplierVat ? `<div>DIČ: ${escapeHtml(data.supplierVat)}</div>` : '<div>Neplátce DPH</div>'}<br><div>Č. účtu: ${escapeHtml(data.account)}</div><div>${escapeHtml(data.supplierEmail)}</div><div>${escapeHtml(data.website)}</div></div>
@@ -196,6 +197,8 @@ function renderPreview() {
 }
 
 form.addEventListener('input', event => {
+  // Při přepnutí na Zaplacená se předvyplní dnešek; u starších faktur ho přepíšeš na skutečné datum úhrady.
+  if (event.target.name === 'status' && event.target.value === 'paid' && !form.elements.paidDate.value) form.elements.paidDate.value = todayIso();
   if (event.target.name === 'customerRef') {
     const customer = customers.find(c => c.id === event.target.value);
     if (customer) {
@@ -358,6 +361,7 @@ $('importLegacyButton').addEventListener('click', () => run(async () => {
 document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => run(async () => {
   await flushSave();
   if (button.dataset.tab === 'list') await openList();
+  if (button.dataset.tab === 'overview') await openOverview();
   if (button.dataset.tab === 'customers') await openCustomers();
   if (button.dataset.tab === 'settings') { fillSettingsForm(); showView('settings'); }
 })));
