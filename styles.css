@@ -1250,6 +1250,62 @@ ul, ol {
   display: none;
 }
 
+/* --- Screenshoty vysledku (nepovinne, viz `gallery` v caseStudies) --- */
+.case-gallery {
+  max-width: 800px;
+  margin-top: 48px;
+}
+
+.case-gallery-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+  letter-spacing: -0.01em;
+}
+
+.case-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.case-shot {
+  margin: 0;
+}
+
+/* Odkaz otevre plne rozliseni - v nahledu je text e-shopu maly. */
+.case-shot a {
+  display: block;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--bg-glass-border);
+  overflow: hidden;
+  transition: border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.case-shot a:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.case-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  object-position: top;
+}
+
+.case-shot figcaption {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.case-gallery[hidden] {
+  display: none;
+}
+
 /* Dve tlacitka v sekci O mne (konzultace + reference). */
 .about-actions {
   display: flex;
@@ -1475,6 +1531,14 @@ ul, ol {
 
   .case-quote-text {
     font-size: 0.95rem;
+  }
+
+  .case-gallery {
+    margin-top: 32px;
+  }
+
+  .case-gallery-grid {
+    grid-template-columns: 1fr;
   }
 
   .references-grid {

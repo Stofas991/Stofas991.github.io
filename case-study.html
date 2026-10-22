@@ -122,6 +122,12 @@
         </div>
       </div>
 
+      <!-- SCREENSHOTS (zobrazi se jen u studii, ktere maji `gallery`) -->
+      <section class="case-gallery reveal" id="caseGallery" hidden>
+        <h2 class="case-gallery-title">Jak to vypadá</h2>
+        <div class="case-gallery-grid" id="caseGalleryGrid"></div>
+      </section>
+
       <!-- CLIENT QUOTE (zobrazi se jen u studii, ktere maji `quote`) -->
       <figure class="case-quote reveal" id="caseQuote" hidden>
         <blockquote class="case-quote-text" id="caseQuoteText"></blockquote>
@@ -346,7 +352,13 @@
             { value: '849', label: 'Starých adres přesměrovaných 301 na nové' },
             { value: '0', label: 'Odkazů v popisech mířících na starý web' }
           ]
-        }
+        },
+        gallery: [
+          { src: 'screenshots/slackshop/uvod.webp', caption: 'Úvodní stránka na Shoptetu' },
+          { src: 'screenshots/slackshop/kategorie.webp', caption: 'Kategorie podle nového stromu od klienta' },
+          { src: 'screenshots/slackshop/produkt.webp', caption: 'Produkt s variantami převedenými z PrestaShopu' },
+          { src: 'screenshots/slackshop/popis.webp', caption: 'Popis produktu v jednotné struktuře se schématy z původního webu' }
+        ]
       }
     };
 
@@ -400,6 +412,35 @@
       document.getElementById('metric2Label').textContent = metrics[1].label;
       document.getElementById('metric3Value').textContent = metrics[2].value;
       document.getElementById('metric3Label').textContent = metrics[2].label;
+
+      // Screenshoty - nepovinne, ma je zatim jen cast studii
+      const galleryEl = document.getElementById('caseGallery');
+      const galleryGrid = document.getElementById('caseGalleryGrid');
+      galleryGrid.innerHTML = '';
+      if (study.gallery && study.gallery.length) {
+        study.gallery.forEach(shot => {
+          const fig = document.createElement('figure');
+          fig.className = 'case-shot';
+          const link = document.createElement('a');
+          link.href = shot.src;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          const img = document.createElement('img');
+          img.src = shot.src;
+          img.alt = shot.caption;
+          img.loading = 'lazy';
+          img.width = 1440;
+          img.height = 900;
+          link.appendChild(img);
+          const cap = document.createElement('figcaption');
+          cap.textContent = shot.caption;
+          fig.append(link, cap);
+          galleryGrid.appendChild(fig);
+        });
+        galleryEl.hidden = false;
+      } else {
+        galleryEl.hidden = true;
+      }
 
       // Citace klienta - nepovinna, ma ji zatim jen cast studii
       const quoteEl = document.getElementById('caseQuote');
