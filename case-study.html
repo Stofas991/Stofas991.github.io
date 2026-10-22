@@ -311,6 +311,42 @@
         }
         // Citace klienta tu ZAMERNE neni - bere se z references.js podle
         // klice studie, aby stejny text nebyl na webu na dvou mistech.
+      },
+      slackshop: {
+        tag: 'Migrace e-shopu',
+        title: 'Přechod e-shopu z PrestaShopu na Shoptet: katalog ve dvou jazycích a 849 přesměrovaných adres',
+        date: '2026',
+        client: 'SlackShop — e-shop se slackline vybavením',
+        duration: '3 týdny',
+        problem: {
+          title: 'Ruční přepis katalogu by stál týdny a rozbil vyhledávání',
+          text: `<p>Klient se rozhodl opustit vlastní PrestaShop a přejít na Shoptet. Doména měla zůstat stejná, katalog ale bylo potřeba dostat do nového systému celý — v češtině i angličtině, s variantami, parametry, fotkami a popisy.</p>
+          <ul>
+            <li><strong>Data jen v databázovém dumpu:</strong> Produkty, varianty, ceny a texty byly v dumpu databáze PrestaShopu, aktuální ceny a nové kategorie v ceníku od klienta. Ty dva zdroje se v detailech neshodovaly.</li>
+            <li><strong>Jiná pravidla na druhé straně:</strong> Shoptet má vlastní formát importu a limity — například nejvýš tři parametry varianty. Některé produkty jich měly čtyři.</li>
+            <li><strong>Staré adresy ve vyhledávačích:</strong> Stovky URL produktů, kategorií, článků a jejich anglických verzí měly po přepnutí domény vracet chybu. Odkazy uvnitř popisů produktů mířily na staré adresy taky.</li>
+          </ul>`
+        },
+        solution: {
+          title: 'Migrační skript, který se dá pustit znovu po každé připomínce',
+          text: `<p>Místo jednorázového převodu vznikl skript, který z dumpu a ceníku vždy znovu vygeneruje importní soubory pro Shoptet. Rozhodnutí klienta se zapisují do jednoho konfiguračního souboru, takže každá připomínka znamená nový běh, ne ruční opravy v exportu.</p>
+          <ul>
+            <li><strong>Katalog podle oficiálního formátu:</strong> Produkty, varianty, kategorie, parametry a fotky v importu přesně podle dokumentace Shoptetu. Angličtina jde druhým importem, chybějící anglické texty doplnil strojový překlad ke kontrole klientem.</li>
+            <li><strong>Kontrola před importem:</strong> Ceny se ověřují proti ceníku, texty proti limitům Shoptetu a popisy proti nebezpečnému kódu. Rozpory, které musí rozhodnout klient, jdou do přehledné tabulky místo do e-shopu.</li>
+            <li><strong>Nejdřív testovací e-shop:</strong> Celý katalog prošel zkušebním importem na testovacím Shoptetu. Na ostrý e-shop šel až ověřený postup.</li>
+            <li><strong>Přesměrování a odkazy:</strong> Každá stará adresa produktu, varianty, kategorie i článku v obou jazycích dostala 301 na svou novou podobu. Odkazy v popisech se přepsaly rovnou na nové URL.</li>
+          </ul>`
+        },
+        result: {
+          title: 'Nový e-shop běží na stejné doméně, staré odkazy fungují dál',
+          text: `<p>E-shop je přepnutý na Shoptet a běží na původní doméně. Zákazník, který přijde ze starého odkazu nebo z vyhledávače, skončí na správném produktu nebo článku, ne na chybové stránce.</p>
+          <p>Nic z katalogu se nezakládalo ručně. Když klient během migrace změnil strom kategorií nebo rozhodl o cenách, stačilo skript pustit znovu a naimportovat výsledek.</p>`,
+          metrics: [
+            { value: '86 / 138', label: 'Produktů a variant převedených v češtině i angličtině' },
+            { value: '849', label: 'Starých adres přesměrovaných 301 na nové' },
+            { value: '0', label: 'Odkazů v popisech mířících na starý web' }
+          ]
+        }
       }
     };
 
