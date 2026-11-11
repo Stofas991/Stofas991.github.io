@@ -1,0 +1,24 @@
+name: Udrzeni databaze faktur (Supabase)
+
+# Free projekt Supabase se po 7 dnech bez aktivity pozastavi a faktury pak
+# hlasi "Failed to fetch". Tenhle job kazde 2 dny zavola funkci keepalive()
+# (supabase/schema.sql), coz je skutecny dotaz do databaze.
+on:
+  schedule:
+    - cron: '17 6 */2 * *'   # kazdy druhy den v 6:17 UTC
+  workflow_dispatch:          # tlacitko "Run workflow" v GitHub UI
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Zavolej keepalive()
+        env:
+          # Verejny (publishable) klic, stejny jako ve faktura-db.js; data chrani prihlaseni a RLS.
+          SUPABASE_URL: https://xbtoxmfwzvesfdpiussf.supabase.co
+          SUPABASE_KEY: sb_publishable_FIpFHwUtkDH6hxGJcqve4w_-Buem216
+        run: |
+          curl -fsS --retry 3 --retry-delay 20 -X POST "$SUPABASE_URL/rest/v1/rpc/keepalive" \
+            -H "apikey: $SUPABASE_KEY" -H "Content-Type: application/json" -d '{}'

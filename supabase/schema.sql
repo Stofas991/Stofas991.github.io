@@ -149,3 +149,10 @@ create policy owner_all on public.invoice_counters for all to authenticated usin
 revoke all on public.supplier_profile, public.customers, public.invoices, public.invoice_items, public.invoice_counters from anon;
 revoke execute on function public.next_invoice_number(), public.create_invoice(), public.save_invoice(jsonb) from public, anon;
 grant execute on function public.next_invoice_number(), public.create_invoice(), public.save_invoice(jsonb) to authenticated;
+
+-- Udržení free projektu při životě: Supabase ho po týdnu bez aktivity pozastaví.
+-- Volá ji GitHub Action .github/workflows/supabase-keepalive.yml; nevrací žádná data, jen skutečný dotaz do DB.
+create or replace function public.keepalive() returns int
+language sql stable as $$ select 1 $$;
+revoke execute on function public.keepalive() from public;
+grant execute on function public.keepalive() to anon, authenticated;
